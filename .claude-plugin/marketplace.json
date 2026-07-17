@@ -1,0 +1,11 @@
+{
+  "name": "theokit",
+  "owner": { "name": "usetheo", "email": "paulo@usetheo.dev" },
+  "plugins": [
+    {
+      "name": "theokit-sdk",
+      "source": "./",
+      "description": "Authoring skill for @theokit/sdk — accurate, up-to-date knowledge of the SDK surface (Agent.create/prompt, Tool.create, streaming SDKMessage events, MCP, subagents, cron, memory, errors) so Claude Code writes correct SDK code."
+    }
+  ]
+}
