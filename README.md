@@ -25,16 +25,35 @@ A [Claude Code](https://code.claude.com) plugin that teaches your assistant the 
 
 ## Install
 
+```bash
+npx @theokit/skill            # installs into ~/.claude/skills (all your projects)
+npx @theokit/skill --project  # installs into ./.claude/skills (committable, this repo only)
+npx @theokit/skill --force    # overwrite an existing copy
+```
+
+Then start writing SDK code — the skill loads automatically when you work with `@theokit/sdk`, or invoke it directly with `/theokit-sdk`.
+
+<details>
+<summary>Prefer the native Claude Code plugin flow?</summary>
+
 ```text
 /plugin marketplace add usetheodev/theokit-skill
 /plugin install theokit-sdk@theokit
 ```
 
-Then start writing SDK code — the skill loads automatically when you work with `@theokit/sdk`, or invoke it directly with `/theokit-sdk`. Run `/reload-plugins` if you installed it mid-session.
+Run `/reload-plugins` if you installed it mid-session. Same skill, distributed as a plugin instead of copied via npx.
 
-## Why a plugin (vs `npx theokit-init-claude`)
+</details>
 
-`theokit-init-claude` scaffolds SDK knowledge **into each project's** `.claude/`. This plugin installs the same expertise **once, globally**, so every project's Claude Code has it — nothing committed to your repo, one place to update.
+## `@theokit/skill` vs `theokit-init-claude`
+
+Both install via `npx`, but differ in scope:
+
+| | `npx @theokit/skill` | `npx theokit-init-claude` |
+| --- | --- | --- |
+| Installs | just the `theokit-sdk` authoring skill | a full project scaffold (`AGENTS.md`, `CLAUDE.md`, skills, settings) |
+| Default target | `~/.claude/skills` (personal, all projects) | `./.claude` (this project, committable) |
+| Use when | you want SDK expertise everywhere, nothing in your repo | you want a per-project, committed setup |
 
 ## Staying accurate
 
