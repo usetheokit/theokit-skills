@@ -35,7 +35,8 @@
     "access": "public"
   },
   "scripts": {
-    "sync-references": "node scripts/sync-references.mjs"
+    "sync-references": "node scripts/sync-references.mjs",
+    "test": "node --test"
   },
   "devDependencies": {
     "@theokit/sdk": "^4.2.7"
