@@ -4,6 +4,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Fixed
+- Tool example used the wrong spec field `execute` — the canonical `Tool.create` field is `handler` (returns a string, or a typed value with `outputSchema`). Corrected in the skill (0.1.1).
+
+## [0.1.0]
+
 ### Added
 - Initial release. The `theokit-sdk` authoring skill for `@theokit/sdk`, authored against the shipped type declarations (Agent.create/prompt, Tool.create with Zod, streaming SDKMessage events, run.wait/cancel, MCP servers, subagents, cron, memory/context/skills, resource disposal, TheokitAgentError hierarchy, and anti-patterns).
 - npx installer (`@theokit/skill`): `npx @theokit/skill` copies the skill into `~/.claude/skills` (personal, all projects); `--project` targets `./.claude/skills`; `--force` overwrites.

@@ -65,7 +65,7 @@ const roll = Tool.create({
     count: z.number().int().min(1).max(100),
     sides: z.number().int().min(2).max(1000),
   }),
-  execute: async ({ count, sides }) => ({ total: rollDice(count, sides) }),
+  handler: async ({ count, sides }) => JSON.stringify({ total: rollDice(count, sides) }),
 });
 ```
 
