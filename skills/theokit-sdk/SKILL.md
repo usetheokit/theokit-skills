@@ -11,9 +11,13 @@ Requires Node 22.12+. `npm install @theokit/sdk`. Auth via `THEOKIT_API_KEY` (or
 
 ## Module references
 
-Per-module snippets live in `references/` — load the one that matches the surface you are working on:
+Per-module snippets live in `references/` — load the one that matches the surface you are working on. This set covers every public `@theokit/sdk` subpath.
 
-**Core** — [`agent-core`](references/agent-core.md) (create/prompt/send/resume, factory) · [`tools`](references/tools.md) (Tool.create, built-in `@theokit/sdk-tools`, hooks) · [`streaming`](references/streaming.md) (SDKMessage, deltas, backpressure) · [`memory`](references/memory.md) · [`cron`](references/cron.md) · [`errors`](references/errors.md) · [`workflows`](references/workflows.md) · [`eval`](references/eval.md) · [`subscriptions`](references/subscriptions.md) · [`budget`](references/budget.md) · [`config`](references/config.md).
+**Core** — [`agent-core`](references/agent-core.md) (create/prompt/send/resume, factory) · [`tools`](references/tools.md) (Tool.create, `@theokit/sdk-tools`, hooks) · [`streaming`](references/streaming.md) (SDKMessage, deltas) · [`memory`](references/memory.md) · [`cron`](references/cron.md) · [`errors`](references/errors.md) · [`workflows`](references/workflows.md) · [`eval`](references/eval.md) · [`subscriptions`](references/subscriptions.md) · [`budget`](references/budget.md) · [`config`](references/config.md).
+
+**Models, runtime & delegation** — [`models`](references/models.md) · [`subagents`](references/subagents.md) (`/a2a` + tool-scope) · [`retry`](references/retry.md) · [`task-store`](references/task-store.md) · [`sandbox`](references/sandbox.md) · [`compaction`](references/compaction.md) · [`messages`](references/messages.md) (readers) · [`sanitize`](references/sanitize.md) · [`skills`](references/skills.md) · [`auth`](references/auth.md) (`/server/auth` + errors-envelope).
+
+**Utilities** — [`path-safety`](references/path-safety.md) · [`concurrency`](references/concurrency.md) · [`persistence`](references/persistence.md) · [`client`](references/client.md) · [`filesystem`](references/filesystem.md) · [`project`](references/project.md).
 
 **Optional ecosystem packages** (separate installs) — [`di`](references/di.md) (`@theokit/di`) · [`di-agent`](references/di-agent.md) (`@theokit/di-agent` decorators) · [`gateways`](references/gateways.md) (`@theokit/gateway-*`).
 

@@ -1,6 +1,6 @@
 {
   "name": "@theokit/skill",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "npx installer for the theokit-sdk Claude Code skill — teaches Claude Code the @theokit/sdk surface (Agent.create/prompt, Tool.create, streaming SDKMessage events, MCP, subagents, cron, memory, errors) so it writes correct SDK code. Verified against the shipped type declarations.",
   "type": "module",
   "bin": {
@@ -39,6 +39,6 @@
     "test": "node --test"
   },
   "devDependencies": {
-    "@theokit/sdk": "^4.2.7"
+    "@theokit/sdk": "^4.2.8"
   }
 }

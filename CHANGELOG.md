@@ -4,6 +4,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.3.0]
+
+### Added
+- Full public-surface coverage: references/ expanded from 14 to **30 modules** — every @theokit/sdk subpath now has a per-module snippet (models, subagents/a2a, retry, task-store, sandbox, compaction, messages, auth, sanitize, skills, path-safety, concurrency, persistence, client, filesystem, project added). Authored against the shipped .d.ts and synced from the SDK scaffold (drift-gated on both sides).
+
 ## [0.2.0]
 
 ### Added
