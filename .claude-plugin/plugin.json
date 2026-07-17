@@ -1,6 +1,6 @@
 {
   "name": "theokit-sdk",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Claude Code authoring skill for @theokit/sdk — the TypeScript SDK for the Theo agent harness. Loads accurate, up-to-date knowledge of the SDK surface (Agent.create/prompt, Tool.create with Zod, streaming SDKMessage events, run.wait/cancel, MCP servers, subagents, cron, memory/context/skills, resource disposal, and the TheokitAgentError hierarchy) so your assistant writes correct SDK code without scaffolding a per-project .claude/ directory. Verified against the shipped type declarations.",
   "author": {
     "name": "usetheo",

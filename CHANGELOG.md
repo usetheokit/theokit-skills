@@ -4,8 +4,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
-### Fixed
-- Tool example used the wrong spec field `execute` — the canonical `Tool.create` field is `handler` (returns a string, or a typed value with `outputSchema`). Corrected in the skill (0.1.1).
+## [0.2.0]
+
+### Added
+- Per-module reference snippets under `skills/theokit-sdk/references/` (agent-core, tools, streaming, memory, cron, errors, workflows, eval, subscriptions, budget, config, plus optional di / di-agent / gateways). SKILL.md stays a concise overview and links each reference so it loads on demand. Generated from the `@theokit/sdk` scaffold via `node scripts/sync-references.mjs` — one source of truth, drift-gated by the SDK's CI (not a second hand-maintained copy).
+
+### Fixed (0.1.1)
+- Tool example used the wrong spec field `execute` — the canonical `Tool.create` field is `handler` (returns a string, or a typed value with `outputSchema`).
 
 ## [0.1.0]
 

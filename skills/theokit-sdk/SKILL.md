@@ -9,6 +9,16 @@ The TypeScript SDK for the Theo agent harness. One API, two runtimes (local / cl
 
 Requires Node 22.12+. `npm install @theokit/sdk`. Auth via `THEOKIT_API_KEY` (or an explicit `apiKey` option).
 
+## Module references
+
+Per-module snippets live in `references/` — load the one that matches the surface you are working on:
+
+**Core** — [`agent-core`](references/agent-core.md) (create/prompt/send/resume, factory) · [`tools`](references/tools.md) (Tool.create, built-in `@theokit/sdk-tools`, hooks) · [`streaming`](references/streaming.md) (SDKMessage, deltas, backpressure) · [`memory`](references/memory.md) · [`cron`](references/cron.md) · [`errors`](references/errors.md) · [`workflows`](references/workflows.md) · [`eval`](references/eval.md) · [`subscriptions`](references/subscriptions.md) · [`budget`](references/budget.md) · [`config`](references/config.md).
+
+**Optional ecosystem packages** (separate installs) — [`di`](references/di.md) (`@theokit/di`) · [`di-agent`](references/di-agent.md) (`@theokit/di-agent` decorators) · [`gateways`](references/gateways.md) (`@theokit/gateway-*`).
+
+These are generated from the `@theokit/sdk` scaffold — one source of truth, drift-gated by the SDK's CI. Regenerate with `node scripts/sync-references.mjs`.
+
 ## Import map (verified subpaths)
 
 ```typescript

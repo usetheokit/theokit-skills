@@ -55,9 +55,19 @@ Both install via `npx`, but differ in scope:
 | Default target | `~/.claude/skills` (personal, all projects) | `./.claude` (this project, committable) |
 | Use when | you want SDK expertise everywhere, nothing in your repo | you want a per-project, committed setup |
 
+## Per-module references
+
+`SKILL.md` is a concise overview; deeper per-module snippets live in `skills/theokit-sdk/references/*.md` (agent-core, tools, streaming, memory, cron, errors, workflows, eval, subscriptions, budget, config, plus optional di / di-agent / gateways). They load on demand when Claude works on that surface.
+
+The references are **generated from the `@theokit/sdk` scaffold**, not hand-maintained here — one source of truth, protected by the SDK's own drift-gate CI. Regenerate after bumping the SDK:
+
+```bash
+npm i @theokit/sdk@latest && npm run sync-references
+```
+
 ## Staying accurate
 
-The skill is authored against the exported types of `@theokit/sdk`, which are the canonical contract. When the SDK ships a breaking surface change (a new major), regenerate the skill from the current type declarations and cut a new plugin version. The skill deliberately covers only verified-real exports — it will not teach a subpath or factory that isn't in the shipped `.d.ts`.
+The skill is authored against the exported types of `@theokit/sdk`, which are the canonical contract. It deliberately covers only verified-real exports — it will not teach a subpath or factory that isn't in the shipped `.d.ts`.
 
 ## License
 

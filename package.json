@@ -1,6 +1,6 @@
 {
   "name": "@theokit/skill",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "npx installer for the theokit-sdk Claude Code skill — teaches Claude Code the @theokit/sdk surface (Agent.create/prompt, Tool.create, streaming SDKMessage events, MCP, subagents, cron, memory, errors) so it writes correct SDK code. Verified against the shipped type declarations.",
   "type": "module",
   "bin": {
@@ -10,7 +10,8 @@
     "bin",
     "skills",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "scripts"
   ],
   "license": "Apache-2.0",
   "homepage": "https://github.com/usetheodev/theokit-skill#readme",
@@ -32,5 +33,11 @@
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "scripts": {
+    "sync-references": "node scripts/sync-references.mjs"
+  },
+  "devDependencies": {
+    "@theokit/sdk": "^4.2.7"
   }
 }
