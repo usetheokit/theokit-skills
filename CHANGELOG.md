@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 - Secret scanning, in two layers: a `pre-commit` hook that scans the staged content with TruffleHog and refuses the commit, and `.github/workflows/secret-scan.yml`, which re-scans the pushed range in CI. The hook is what keeps a credential out of the history at all; the workflow is what `git commit --no-verify` cannot skip. Confirmed fixtures are silenced one line at a time with a `trufflehog:ignore` comment, never by excluding a path — an excluded path would also hide a real secret added to that same fixture later. (secret-scanning-2026-08)
 
+### Changed
+
+- **The repository moved to the official `usetheokit` organization.** Existing clones keep working: GitHub redirects the old `usetheodev/theokit-skill` remote permanently. The `repository` field, the plugin manifest, and the README now point at `usetheokit`. (usetheokit/theokit#316)
+
+- **The Apache-2.0 license text was replaced with the official one.** The text shipped until now had paragraph 4(d) truncated, dropping "reasonable and customary use" from the NOTICE clause. A modified body under the `Apache-2.0` SPDX identifier is effectively a custom license, and every consumer had to reason about the difference. (usetheokit/theokit#316)
+
 ## [0.3.0]
 
 ### Added

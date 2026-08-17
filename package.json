@@ -14,11 +14,11 @@
     "scripts"
   ],
   "license": "Apache-2.0",
-  "homepage": "https://github.com/usetheodev/theokit-skill#readme",
-  "bugs": "https://github.com/usetheodev/theokit-skill/issues",
+  "homepage": "https://github.com/usetheokit/theokit-skill#readme",
+  "bugs": "https://github.com/usetheokit/theokit-skill/issues",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/usetheodev/theokit-skill.git"
+    "url": "git+https://github.com/usetheokit/theokit-skill.git"
   },
   "keywords": [
     "theokit",

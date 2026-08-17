@@ -75,5 +75,5 @@ Apache-2.0 — see [LICENSE](LICENSE).
 
 ## Links
 
-- SDK: [`@theokit/sdk`](https://www.npmjs.com/package/@theokit/sdk) · [source](https://github.com/usetheodev/theokit-sdk)
+- SDK: [`@theokit/sdk`](https://www.npmjs.com/package/@theokit/sdk) · [source](https://github.com/usetheokit/theokit-sdk)
 - Theo: [usetheo.dev](https://usetheo.dev) · [Discord](https://discord.usetheo.dev/)
