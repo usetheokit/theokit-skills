@@ -36,7 +36,8 @@
   },
   "scripts": {
     "sync-references": "node scripts/sync-references.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
   "devDependencies": {
     "@theokit/sdk": "^4.2.8"
