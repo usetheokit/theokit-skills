@@ -1,5 +1,22 @@
 name: release
 
+# AUTHENTICATION RUNS IN TWO MODES, and the first one exists only because of a bootstrap problem.
+#
+#   Steady state — TRUSTED PUBLISHING (no secret at all). npm mints a short-lived credential from
+#   the OIDC token this job requests, so there is no long-lived token to leak, rotate or forget.
+#   Provenance is generated automatically. Requires npm >= 11.5.1 and Node >= 22.14.0, both ensured
+#   below, plus `id-token: write` and the `npm` environment named in the package's Trusted Publisher
+#   settings — which is why this workflow declares both.
+#
+#   Bootstrap — NPM_TOKEN, once. A trusted publisher is configured in a package's settings page, and
+#   that page does not exist until the package has been published at least once. The circularity is
+#   real and npm documents no way around it: the first publish of a new name uses a token, and the
+#   token is deleted afterwards. `NODE_AUTH_TOKEN` below is unset in steady state, which npm ignores.
+#
+# Setting up the trusted publisher after the first release is what retires the secret. Leaving the
+# token in place instead is the failure this note exists to prevent: it keeps a credential alive
+# that nothing needs any more.
+#
 # A RELEASE IS A DELIBERATE ACT, so the trigger is a pushed tag rather than a merge. Publishing on
 # every merge to a branch makes the registry a side effect of code review, and the first time that
 # is wrong it is already public — npm's unpublish window is 72 hours and the version number stays
@@ -47,8 +64,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
+          # >= 22.14.0 is the floor npm states for OIDC publishing; `22` resolves to the latest 22.x.
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
+
+      - name: npm >= 11.5.1, the floor for OIDC publishing
+        # The runner's bundled npm trails the Node release, and a version below the floor fails at
+        # publish time with an auth error that says nothing about the version. Upgrading is cheap and
+        # removes a diagnosis nobody would enjoy.
+        run: |
+          npm install -g npm@latest
+          npm --version
 
       - name: The tag and the manifest must agree
         shell: bash
@@ -107,11 +133,14 @@ jobs:
 
       - name: Publish with provenance
         if: github.event_name == 'push' || inputs.dry_run == false
-        # `--provenance` uses the OIDC token granted by `id-token: write` to publish a signed,
-        # verifiable statement linking this tarball to this commit and this workflow. A consumer can
-        # check where their bytes came from instead of trusting the name. It costs one flag.
+        # Provenance is a signed, verifiable statement linking this tarball to this commit and this
+        # workflow, so a consumer can check where their bytes came from instead of trusting a name.
+        # Trusted publishing emits it automatically; `--provenance` is passed anyway so the bootstrap
+        # publish — which authenticates with a token — produces it too.
         run: npm publish --provenance --access public
         env:
+          # Empty in steady state. npm falls back to the OIDC credential when this is unset, which is
+          # the whole point: the secret is a bootstrap crutch, not part of the design.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish skipped (dry run)
