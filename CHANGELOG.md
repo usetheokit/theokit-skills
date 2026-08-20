@@ -4,7 +4,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Changed
+
+- BREAKING: the package is now `@theokit/skills` and its command is `npx @theokit/skills`. It holds every skill in the TheoKit ecosystem rather than one, and installs into every AI coding tool rather than Claude Code alone. The previous name published four versions and nineteen weekly downloads; no migration path is provided because there is effectively nothing to migrate.
+
 ### Added
+
+- Installs to write LOCATIONS instead of per-tool adapters. `.agents/skills/` is read by OpenAI Codex, Gemini CLI, GitHub Copilot, Zed and Devin Desktop; `.claude/skills/` by Claude Code and Copilot in VS Code; `.github/skills/` by the github.com Copilot surfaces. Two directories serve six tools, so a per-tool list would write the same bytes five times and then have to keep five copies in step.
+- Links the installed skill to the package when that is valid, so it follows your lockfile instead of freezing at install time. On Windows the link is a junction, which needs no Administrator rights or Developer Mode; elsewhere it is a relative symlink. Falls back to copying whenever a link would dangle — notably under `npx`, where this package lives in a cache that gets pruned — and always reports which mode it produced.
+- `--check`, a CI gate that fails when the installed skills drift from the package: never installed, installed from another version, or installed and since deleted. An instruction file that has gone stale is followed as diligently as a current one, and nothing else surfaces that.
+- `--target`, `--skill`, `--dry-run`, `--copy` and `--global`, plus a `.theokit-skills.json` manifest that makes re-running a no-op and is meant to be committed.
+- CI now runs the suite and an end-to-end install on `ubuntu-latest`, `macos-latest` and `windows-latest`. Linking is the one behaviour that genuinely differs per platform, and a fallback nobody exercises is a fallback nobody has seen work.
+
+### Fixed
+
+- The test suite could never run. `tests/lint/no-ptbr.test.ts` imported `vitest`, which this zero-dependency package does not have, and used `__dirname`, which does not exist in ESM; the CI step that would have surfaced it (`node --test tests/`) fails on Node 22 before reaching any test — two breakages hiding each other. The lint is ported to `node:test` with its logic unchanged, and CI now runs `npm test`.
+
 
 - Secret scanning, in two layers: a `pre-commit` hook that scans the staged content with TruffleHog and refuses the commit, and `.github/workflows/secret-scan.yml`, which re-scans the pushed range in CI. The hook is what keeps a credential out of the history at all; the workflow is what `git commit --no-verify` cannot skip. Confirmed fixtures are silenced one line at a time with a `trufflehog:ignore` comment, never by excluding a path — an excluded path would also hide a real secret added to that same fixture later. (secret-scanning-2026-08)
 

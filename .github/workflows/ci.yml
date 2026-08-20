@@ -7,14 +7,54 @@ on:
     branches: [main]
 
 jobs:
-  drift-gate:
-    name: skill drift gate
-    runs-on: ubuntu-latest
+  test:
+    # THREE PLATFORMS, DELIBERATELY. This package creates links, and linking is the one thing that
+    # behaves differently on each: Windows needs a junction (a symlink there requires Administrator
+    # or Developer Mode), elsewhere a relative symlink is correct. The installer falls back to
+    # copying when a link is refused — and a fallback nobody exercises is a fallback nobody has
+    # seen work. `windows-latest` is what turns "should work on Windows" into a measurement.
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      # No dependencies: the drift gate uses Node's built-in test runner.
-      - name: Run drift gate (SKILL.md + references/*.md)
-        run: node --test tests/
+      # No dependencies: the suite uses Node's built-in test runner.
+      - name: Run the suite
+        run: npm test
+
+  install-smoke:
+    # Installs into a throwaway project the way a user would, then asserts the drift gate agrees.
+    # Runs on all three because the reporting differs by install mode, and the mode differs by OS.
+    name: install smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install every skill into a scratch project
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="$(mktemp -d)"
+          # The installer writes into the CWD, so run it from the scratch dir: a smoke test that
+          # dirties the repository it is testing would fail the cleanliness check below for its
+          # own reason rather than the code's.
+          cd "$scratch"
+          node "$GITHUB_WORKSPACE/bin/install.mjs" --target=agents --target=claude
+          test -f .agents/skills/theokit-sdk/SKILL.md
+          test -f .claude/skills/theokit-sdk/SKILL.md
+          node "$GITHUB_WORKSPACE/bin/install.mjs" --target=agents --target=claude --check
+      - name: The repo must be clean afterwards
+        shell: bash
+        run: git diff --exit-code && git status --porcelain

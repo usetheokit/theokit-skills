@@ -1,13 +1,14 @@
 {
-  "name": "@theokit/skill",
+  "name": "@theokit/skills",
   "version": "0.3.0",
-  "description": "npx installer for the theokit-sdk Claude Code skill — teaches Claude Code the @theokit/sdk surface (Agent.create/prompt, Tool.create, streaming SDKMessage events, MCP, subagents, cron, memory, errors) so it writes correct SDK code. Verified against the shipped type declarations.",
+  "description": "Installs the TheoKit ecosystem agent skills into every AI coding tool you use — Claude Code, OpenAI Codex, Gemini CLI, GitHub Copilot, Zed, Devin Desktop — on Windows, macOS and Linux. Zero dependencies; links where that follows your lockfile, copies where it cannot.",
   "type": "module",
   "bin": {
-    "theokit-skill": "./bin/install.mjs"
+    "theokit-skills": "./bin/install.mjs"
   },
   "files": [
     "bin",
+    "lib",
     "skills",
     "README.md",
     "LICENSE",
@@ -23,13 +24,16 @@
   "keywords": [
     "theokit",
     "theokit-sdk",
+    "agent-skills",
     "claude-code",
-    "claude-skill",
+    "codex",
+    "gemini-cli",
+    "github-copilot",
+    "zed",
+    "cursor",
     "ai-agents",
-    "typescript",
-    "agent-sdk",
-    "llm",
-    "skill"
+    "skills",
+    "AGENTS.md"
   ],
   "publishConfig": {
     "access": "public"

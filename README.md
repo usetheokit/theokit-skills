@@ -1,79 +1,99 @@
-<p align="center">
-  <a href="https://usetheo.dev">
-    <img src="https://usetheo.dev/logo-128.png" alt="Theo" height="80" />
-  </a>
-</p>
+# @theokit/skills
 
-<h1 align="center">theokit-sdk skill for Claude Code</h1>
-
-<p align="center">
-  <strong>Install once, and Claude Code writes correct <code>@theokit/sdk</code> code.</strong>
-</p>
-
-<p align="center">
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square"></a>
-  <img alt="Claude Code" src="https://img.shields.io/badge/Claude%20Code-plugin-6B48FF?style=flat-square">
-</p>
-
----
-
-A [Claude Code](https://code.claude.com) plugin that teaches your assistant the [`@theokit/sdk`](https://www.npmjs.com/package/@theokit/sdk) surface — the TypeScript SDK for the Theo agent harness. It loads accurate, up-to-date knowledge (verified against the shipped type declarations) so Claude writes correct SDK code without you scaffolding a `.claude/` directory into every project.
-
-## What it knows
-
-`Agent.create` / `Agent.prompt` · `Tool.create` with Zod schemas · streaming `SDKMessage` events (`system` / `user` / `assistant` / `thinking` / `tool_call` / `status` / `task` / `request`) · `run.wait` / `run.cancel` · MCP servers · subagents · cron jobs · memory / context / skills · resource disposal (`await using`) · the `TheokitAgentError` hierarchy · and the anti-patterns to avoid (no `new Agent()`, no removed `define*` factories, no `@theokit/sdk/internal/*` imports).
-
-## Install
+Installs the TheoKit ecosystem's agent skills into whichever AI coding tools you actually use, on
+Windows, macOS and Linux.
 
 ```bash
-npx @theokit/skill            # installs into ~/.claude/skills (all your projects)
-npx @theokit/skill --project  # installs into ./.claude/skills (committable, this repo only)
-npx @theokit/skill --force    # overwrite an existing copy
+npx @theokit/skills
 ```
 
-Then start writing SDK code — the skill loads automatically when you work with `@theokit/sdk`, or invoke it directly with `/theokit-sdk`.
+That is the whole thing. It detects the tools configured in your project, writes the skills where
+each one reads them, and tells you what it did.
 
-<details>
-<summary>Prefer the native Claude Code plugin flow?</summary>
+## Why this is not one adapter per tool
 
-```text
-/plugin marketplace add usetheodev/theokit-skill
-/plugin install theokit-sdk@theokit
-```
+Surveying the vendor documentation on 2026-08-20 produced one finding that shrinks the problem:
 
-Run `/reload-plugins` if you installed it mid-session. Same skill, distributed as a plugin instead of copied via npx.
+**`.agents/skills/` is read by OpenAI Codex, Gemini CLI, GitHub Copilot, Zed and Devin Desktop.**
+Claude Code is the holdout — its documentation says plainly that it reads `.claude/`, and the
+request for `.agents/` support is unanswered.
 
-</details>
+So two directories serve six tools. A third, `.github/skills/`, is the only path the github.com-side
+Copilot surfaces (Chat, code review) read; they ignore `.agents/`.
 
-## `@theokit/skill` vs `theokit-init-claude`
-
-Both install via `npx`, but differ in scope:
-
-| | `npx @theokit/skill` | `npx theokit-init-claude` |
+| Target | Directory | Serves |
 | --- | --- | --- |
-| Installs | just the `theokit-sdk` authoring skill | a full project scaffold (`AGENTS.md`, `CLAUDE.md`, skills, settings) |
-| Default target | `~/.claude/skills` (personal, all projects) | `./.claude` (this project, committable) |
-| Use when | you want SDK expertise everywhere, nothing in your repo | you want a per-project, committed setup |
+| `agents` | `.agents/skills/` | OpenAI Codex, Gemini CLI, GitHub Copilot, Zed, Devin Desktop |
+| `claude` | `.claude/skills/` | Claude Code, GitHub Copilot in VS Code |
+| `github` | `.github/skills/` | GitHub Copilot on github.com (Chat, code review) |
 
-## Per-module references
+Modelling this as a per-tool adapter list would write the same bytes five times and then require
+five copies to be kept in step. The unit here is the **location**, not the tool.
 
-`SKILL.md` is a concise overview; deeper per-module snippets live in `skills/theokit-sdk/references/*.md` (agent-core, tools, streaming, memory, cron, errors, workflows, eval, subscriptions, budget, config, plus optional di / di-agent / gateways). They load on demand when Claude works on that surface.
+## Linked, or copied — and why you are told which
 
-The references are **generated from the `@theokit/sdk` scaffold**, not hand-maintained here — one source of truth, protected by the SDK's own drift-gate CI. Regenerate after bumping the SDK:
+A link is the better artifact: it makes the installed skill follow your lockfile, so
+`npm update @theokit/skills` updates the instructions instead of leaving last year's copy that your
+agent obeys with the same diligence as a current one.
+
+A link is only valid where the source outlives the process. Run through `npx`, this package lives in
+a temporary npm cache that gets pruned, and a link into it is a link into nothing — silently, since
+the agent simply finds no skill. So:
+
+- **Linked** when this package is a dependency of your project (`npm i -D @theokit/skills`) and you
+  install in project scope.
+- **Copied** otherwise, and whenever the filesystem refuses a link.
+
+On Windows the link is a **junction**, which needs no Administrator rights and no Developer Mode —
+unlike a symlink, which needs one of them. Elsewhere it is a relative symlink, so moving the tree
+does not break it. Every failure falls back to copying, and the output says which mode you got: a
+silent downgrade would make "installed" mean two different things with no way to tell them apart.
+
+This is verified rather than asserted — the suite runs on `ubuntu-latest`, `macos-latest` and
+`windows-latest`, and the end-to-end test spawns the real installer in a real temporary project on
+each.
+
+## Keeping it honest: `--check`
 
 ```bash
-npm i @theokit/sdk@latest && npm run sync-references
+npx @theokit/skills --check
 ```
 
-## Staying accurate
+Exits non-zero when what is installed no longer matches this package: never installed, installed
+from a different version, or installed and since deleted. Three states rather than a boolean,
+because the fixes differ.
 
-The skill is authored against the exported types of `@theokit/sdk`, which are the canonical contract. It deliberately covers only verified-real exports — it will not teach a subpath or factory that isn't in the shipped `.d.ts`.
+Put it in CI. An instruction file that has gone stale is followed exactly as diligently as a current
+one, and nothing else surfaces the divergence — which is the most-cited criticism of shipping
+instruction files at all, and the reason this command exists.
+
+## Options
+
+```
+--global            install for your user instead of this project
+--force             replace what is already there
+--copy              copy even where linking would work
+--dry-run           print the plan, write nothing
+--target=<id>       agents | claude | github   (repeatable; default: detected)
+--skill=<name>      install one skill (repeatable; default: all)
+```
+
+Re-running is a no-op. `.theokit-skills.json` records what landed, from which version, in which
+mode; it is small, sorted and meant to be committed.
+
+`CLAUDE_CONFIG_DIR` is honoured, because Claude Code honours it — installing into `~/.claude` when
+you have relocated your config writes a directory the tool never reads.
+
+## What ships
+
+Every skill in the TheoKit ecosystem lives under `skills/`. Today that is `theokit-sdk`, which
+covers `Agent.create` / `Agent.prompt`, `Tool.create` with Zod, streaming `SDKMessage` events,
+`run.wait` / `cancel`, MCP servers, subagents, cron, memory and context, disposal, and the
+`TheokitAgentError` hierarchy.
+
+The content is generated from `@theokit/sdk`'s own per-module sources and gated against drift, so a
+bad sync cannot publish a skill teaching a removed API or a subpath that does not exist.
 
 ## License
 
-Apache-2.0 — see [LICENSE](LICENSE).
-
-## Links
-
-- SDK: [`@theokit/sdk`](https://www.npmjs.com/package/@theokit/sdk) · [source](https://github.com/usetheokit/theokit-sdk)
-- Theo: [usetheo.dev](https://usetheo.dev) · [Discord](https://discord.usetheo.dev/)
+Apache-2.0.
