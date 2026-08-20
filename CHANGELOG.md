@@ -4,6 +4,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-20
+
 ### Changed
 
 - BREAKING: the package is now `@theokit/skills` and its command is `npx @theokit/skills`. It holds every skill in the TheoKit ecosystem rather than one, and installs into every AI coding tool rather than Claude Code alone. The previous name published four versions and nineteen weekly downloads; no migration path is provided because there is effectively nothing to migrate.

@@ -1,6 +1,6 @@
 {
   "name": "@theokit/skills",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Installs the TheoKit ecosystem agent skills into every AI coding tool you use — Claude Code, OpenAI Codex, Gemini CLI, GitHub Copilot, Zed, Devin Desktop — on Windows, macOS and Linux. Zero dependencies; links where that follows your lockfile, copies where it cannot.",
   "type": "module",
   "bin": {
@@ -41,7 +41,8 @@
   "scripts": {
     "sync-references": "node scripts/sync-references.mjs",
     "test": "node --test",
-    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true"
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
+    "prepublishOnly": "npm test"
   },
   "devDependencies": {
     "@theokit/sdk": "^4.2.8"

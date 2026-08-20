@@ -1,0 +1,135 @@
+name: release
+
+# A RELEASE IS A DELIBERATE ACT, so the trigger is a pushed tag rather than a merge. Publishing on
+# every merge to a branch makes the registry a side effect of code review, and the first time that
+# is wrong it is already public — npm's unpublish window is 72 hours and the version number stays
+# burned either way.
+on:
+  push:
+    tags: ["v*"]
+  # Lets a release be rehearsed end to end without touching the registry.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run every gate and pack the tarball, but do not publish"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  # The same three-platform matrix the branch gate runs. It is repeated here rather than assumed:
+  # a tag can be cut from any commit, including one that never passed CI.
+  verify:
+    name: verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm test
+
+  publish:
+    name: publish to npm
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: write # create the GitHub Release
+      id-token: write # npm provenance — see the publish step
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: The tag and the manifest must agree
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest="$(node -p "require('./package.json').version")"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "manual run — publishing version $manifest"
+          else
+            tag="${GITHUB_REF_NAME#v}"
+            if [ "$tag" != "$manifest" ]; then
+              echo "::error::tag v$tag does not match package.json $manifest."
+              echo "A release whose tag and manifest disagree publishes one version under another's name."
+              exit 1
+            fi
+          fi
+          echo "VERSION=$manifest" >> "$GITHUB_ENV"
+
+      - name: The CHANGELOG must describe this version
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Unbreakable Rule 6: if the change is not in the changelog, it did not happen. A release
+          # with no entry gives consumers a version bump and no way to learn what moved.
+          if ! grep -q "^## \[$VERSION\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [$VERSION]' section."
+            exit 1
+          fi
+
+      - name: This version must not already be on the registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="$(node -p "require('./package.json').name")"
+          if npm view "$name@$VERSION" version >/dev/null 2>&1; then
+            echo "::error::$name@$VERSION is already published. Bump the version; npm versions are immutable."
+            exit 1
+          fi
+
+      - name: Pack and install the tarball the way a consumer would
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The strongest pre-publish check there is: the artifact that would ship, installed into a
+          # clean project, with its bin actually executed. `npm test` proves the source works; this
+          # proves what `files[]` puts in the tarball works.
+          tarball="$(npm pack --silent)"
+          scratch="$(mktemp -d)"
+          cp "$tarball" "$scratch/"
+          cd "$scratch"
+          node -e 'require("fs").writeFileSync("package.json",JSON.stringify({name:"scratch",private:true,version:"1.0.0"}))'
+          npm install --silent "./$tarball"
+          npx --no-install theokit-skills --target=agents
+          test -f .agents/skills/theokit-sdk/SKILL.md
+          npx --no-install theokit-skills --target=agents --check
+
+      - name: Publish with provenance
+        if: github.event_name == 'push' || inputs.dry_run == false
+        # `--provenance` uses the OIDC token granted by `id-token: write` to publish a signed,
+        # verifiable statement linking this tarball to this commit and this workflow. A consumer can
+        # check where their bytes came from instead of trusting the name. It costs one flag.
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish skipped (dry run)
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run
+        run: echo "Every gate passed. Re-run with dry_run=false, or push a v$VERSION tag, to publish."
+
+      - name: GitHub Release from the CHANGELOG
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # The section for this version, up to the next heading — so the release notes are the
+          # changelog rather than a second, divergent copy of it.
+          awk -v v="## \\[$VERSION\\]" '
+            $0 ~ v {found=1; next}
+            found && /^## \[/ {exit}
+            found {print}
+          ' CHANGELOG.md > notes.md
+          gh release create "v$VERSION" --title "v$VERSION" --notes-file notes.md
