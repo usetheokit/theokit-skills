@@ -1,10 +1,13 @@
 name: ci
 
 on:
+  # Work is born on `workspace` and promoted through `develop` to `main`, so a gate that only runs
+  # on `main` reports on code that was merged before anyone could see the result. The three-platform
+  # matrix below is worth nothing if it first executes after the decision to merge.
   push:
-    branches: [main]
+    branches: [workspace, develop, main]
   pull_request:
-    branches: [main]
+    branches: [develop, main]
 
 jobs:
   test:
