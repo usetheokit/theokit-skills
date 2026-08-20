@@ -11,6 +11,20 @@ git push origin v0.4.0
 The `release` workflow then runs the three-platform suite, checks four things, packs the tarball,
 installs it into a clean project and runs the bin from it, and only then publishes.
 
+## Before any of this works: the workflow has to reach `main`
+
+`workflow_dispatch` is only offered for workflows present on the repository's **default branch**.
+Measured on 2026-08-20, with `release.yml` on `workspace` only:
+
+```
+$ gh workflow run release.yml --repo usetheokit/theokit-skills -f dry_run=true
+HTTP 404: workflow release.yml not found on the default branch
+```
+
+A tag push is different — it runs the workflows from the tagged commit — but the rehearsal below
+needs the file on `main`. So the order is: promote `workspace` → `develop` → `main` through the
+usual PRs, and only then run the setup. That matches where releases are cut from anyway.
+
 ## One-time setup
 
 npm's trusted publishing removes the long-lived token entirely — the workflow authenticates with a
