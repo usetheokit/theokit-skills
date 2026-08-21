@@ -4,6 +4,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-20
+
+### Changed
+
+- `RELEASING.md` described a setup that has since been done. It told the reader to create an npm token and wire it as a secret; publishing now authenticates over OIDC trusted publishing, so there is no token, no secret, and nothing to rotate. A runbook whose first instruction is a step you must NOT take is worse than no runbook. The bootstrap history is kept, collapsed, with why that path is closed.
+
 ## [0.4.0] - 2026-08-20
 
 ### Changed

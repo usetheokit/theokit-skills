@@ -11,51 +11,13 @@ git push origin v0.4.0
 The `release` workflow then runs the three-platform suite, checks four things, packs the tarball,
 installs it into a clean project and runs the bin from it, and only then publishes.
 
-## Before any of this works: the workflow has to reach `main`
+## Authentication: nothing to configure
 
-`workflow_dispatch` is only offered for workflows present on the repository's **default branch**.
-Measured on 2026-08-20, with `release.yml` on `workspace` only:
+Publishing authenticates over **OIDC trusted publishing**. There is no token, no secret in the
+repository, and nothing to rotate: npm mints a short-lived credential from the workflow's OIDC token
+and generates provenance automatically.
 
-```
-$ gh workflow run release.yml --repo usetheokit/theokit-skills -f dry_run=true
-HTTP 404: workflow release.yml not found on the default branch
-```
-
-A tag push is different — it runs the workflows from the tagged commit — but the rehearsal below
-needs the file on `main`. So the order is: promote `workspace` → `develop` → `main` through the
-usual PRs, and only then run the setup. That matches where releases are cut from anyway.
-
-## One-time setup
-
-npm's trusted publishing removes the long-lived token entirely — the workflow authenticates with a
-short-lived OIDC credential and provenance is generated automatically. It has one catch, and it is
-structural: a trusted publisher is configured on a package's settings page, and that page does not
-exist until the package has been published at least once. npm documents no way around it.
-
-So the first release uses a token, and the token is deleted afterwards.
-
-### 1. Bootstrap the first publish
-
-Create a **granular access token** at <https://www.npmjs.com/settings/~/tokens> with write access to
-`@theokit/*`, then:
-
-```bash
-gh secret set NPM_TOKEN --repo usetheokit/theokit-skills
-```
-
-Rehearse before committing to it — this runs every gate and packs the tarball without touching the
-registry:
-
-```bash
-gh workflow run release.yml --repo usetheokit/theokit-skills -f dry_run=true
-```
-
-Then tag, as above.
-
-### 2. Configure the trusted publisher
-
-After the first version exists, at
-<https://www.npmjs.com/package/@theokit/skills/access> → **Trusted Publisher** → **GitHub Actions**:
+The trusted publisher is already configured on the package:
 
 | Field | Value |
 | --- | --- |
@@ -64,18 +26,24 @@ After the first version exists, at
 | Workflow filename | `release.yml` |
 | Environment | `npm` |
 
-### 3. Delete the token
+Change any of those three names — rename the repo, rename the workflow file, move the publish job
+out of the `npm` environment — and publishing stops working until the trusted publisher is updated
+to match. That is the trade: the credential cannot leak because it does not exist, and in exchange
+the identity of the workflow *is* the credential.
 
-```bash
-gh secret delete NPM_TOKEN --repo usetheokit/theokit-skills
-```
+<details>
+<summary>How the first release got published, and why that path is closed</summary>
 
-This step is the point of the previous one. A token left in place is a live credential nothing needs
-any more — and the reason to prefer OIDC in the first place is that a credential which does not
-exist cannot leak, expire at the wrong moment, or be rotated by someone who has left.
+A trusted publisher is configured on a package's settings page, and that page does not exist until
+the package has been published at least once. npm documents no way around the circularity, so
+`v0.4.0` was published with a temporary granular token scoped to `@theokit`, which was revoked
+immediately afterwards — both the GitHub secret and the token itself, since deleting the secret does
+not revoke the credential.
 
-Confirm the next release still publishes: `NODE_AUTH_TOKEN` being unset is what makes npm fall back
-to the OIDC credential.
+Do not recreate it. Beyond being unnecessary now, npm is restricting bypass-2FA tokens: account
+changes from August 2026 and direct publishing from January 2027.
+
+</details>
 
 ## The `npm` environment
 
