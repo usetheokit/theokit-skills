@@ -1,46 +1,211 @@
 #!/usr/bin/env node
-import { cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+// Installs the TheoKit ecosystem's agent skills into whichever AI coding tools this machine has.
+//
+// One command, every tool, three platforms. The design follows two findings from surveying the
+// landscape on 2026-08-20, both of which cut work rather than adding it:
+//
+//   - `.agents/skills/` is read by Codex, Gemini CLI, GitHub Copilot, Zed and Devin Desktop.
+//     Claude Code is the only holdout, reading `.claude/skills/`. Two directories serve six tools,
+//     so this installs to LOCATIONS, not to a per-tool adapter list that would write the same
+//     bytes five times and then have to keep five copies in step.
+//   - Linking beats copying, but only where the source outlives the process — see
+//     `lib/install-mode.mjs`. Under `npx` it does not, so that case copies.
+//
+// Zero dependencies, by design: this runs through `npx` on machines that have installed nothing.
+
+import { existsSync, readdirSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
-// The skill directory bundled in this package.
-const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const srcDir = join(packageRoot, "skills", "theokit-sdk");
+import { TARGETS, detectTargets, targetById } from "../lib/targets.mjs";
+import { currentMode, isStableSource, place } from "../lib/install-mode.mjs";
+import { drift, writeManifest } from "../lib/manifest.mjs";
 
-const args = process.argv.slice(2);
-const force = args.includes("--force");
-const project = args.includes("--project"); // default is personal (~/.claude)
+const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const version = createRequire(import.meta.url)(join(packageRoot, "package.json")).version;
+const skillsRoot = join(packageRoot, "skills");
+const projectRoot = process.cwd();
 
-// Personal (~/.claude/skills) by default so it applies to every project.
-// --project installs into the current repo's .claude/skills so it can be committed.
-const baseDir = project ? join(process.cwd(), ".claude") : join(homedir(), ".claude");
-const targetDir = join(baseDir, "skills", "theokit-sdk");
+// ── arguments ────────────────────────────────────────────────────────────────────────────────
 
-if (!existsSync(srcDir)) {
-  console.error(`@theokit/skill: bundled skill not found at ${srcDir}`);
+const argv = process.argv.slice(2);
+const has = (flag) => argv.includes(flag);
+const many = (prefix) =>
+  argv.filter((a) => a.startsWith(prefix)).map((a) => a.slice(prefix.length)).filter(Boolean);
+
+const options = {
+  global: has("--global"),
+  force: has("--force"),
+  check: has("--check"),
+  dryRun: has("--dry-run"),
+  copy: has("--copy"),
+  targets: many("--target="),
+  skills: many("--skill="),
+};
+
+if (has("--help") || has("-h")) {
+  usage();
+  process.exit(0);
+}
+
+const unknown = argv.filter(
+  (a) => a.startsWith("-") && !/^--(global|force|check|dry-run|copy|help|target=|skill=)/.test(a) && a !== "-h",
+);
+if (unknown.length > 0) {
+  console.error(`@theokit/skills: unknown option(s): ${unknown.join(", ")}\n`);
+  usage();
+  process.exit(2);
+}
+
+// ── what to install ──────────────────────────────────────────────────────────────────────────
+
+/** Every skill bundled in this package: a directory under `skills/` holding a SKILL.md. */
+function bundledSkills() {
+  if (!existsSync(skillsRoot)) return [];
+  return readdirSync(skillsRoot, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && existsSync(join(skillsRoot, e.name, "SKILL.md")))
+    .map((e) => e.name)
+    .sort();
+}
+
+const available = bundledSkills();
+if (available.length === 0) {
+  console.error(`@theokit/skills: no bundled skills found under ${skillsRoot}`);
   process.exit(1);
 }
 
-// Copy the skill files, skipping existing ones unless --force.
-let added = 0;
-let skipped = 0;
-mkdirSync(targetDir, { recursive: true });
-for (const entry of readdirSync(srcDir, { withFileTypes: true })) {
-  const from = join(srcDir, entry.name);
-  const to = join(targetDir, entry.name);
-  if (force || !existsSync(to)) {
-    cpSync(from, to, { recursive: true });
-    added++;
-  } else {
-    skipped++;
+const selected = options.skills.length > 0 ? options.skills : available;
+const missingSkill = selected.filter((name) => !available.includes(name));
+if (missingSkill.length > 0) {
+  console.error(`@theokit/skills: no such skill: ${missingSkill.join(", ")}`);
+  console.error(`  bundled: ${available.join(", ")}`);
+  process.exit(2);
+}
+
+// ── where to install ─────────────────────────────────────────────────────────────────────────
+
+function resolveTargets() {
+  if (options.targets.length > 0) {
+    const chosen = options.targets.map((id) => [id, targetById(id)]);
+    const bad = chosen.filter(([, t]) => t === undefined).map(([id]) => id);
+    if (bad.length > 0) {
+      console.error(`@theokit/skills: no such target: ${bad.join(", ")}`);
+      console.error(`  known: ${TARGETS.map((t) => t.id).join(", ")}`);
+      process.exit(2);
+    }
+    return chosen.map(([, t]) => t);
+  }
+
+  const detected = detectTargets(projectRoot);
+  // Detecting nothing is the normal first run, not an error: install where the most tools read.
+  return detected.length > 0 ? detected : [targetById("agents")];
+}
+
+const targets = resolveTargets().filter((target) => {
+  if (!options.global) return true;
+  if (target.globalDir() !== undefined) return true;
+  console.log(`  skipping ${target.label}: it has no personal scope (repository-only)`);
+  return false;
+});
+
+// A link is only correct in project scope: it points into this project's node_modules, which is
+// meaningless from a home directory shared by every project.
+const stable = isStableSource(packageRoot, projectRoot);
+const preferLink = !options.copy && !options.global && stable;
+
+// ── plan ─────────────────────────────────────────────────────────────────────────────────────
+
+const plan = [];
+for (const target of targets) {
+  const base = options.global ? target.globalDir() : target.projectDir(projectRoot);
+  if (base === undefined) continue;
+  for (const skill of selected) {
+    plan.push({ target, skill, source: join(skillsRoot, skill), path: join(base, skill) });
   }
 }
 
-const scope = project ? "project (.claude/skills)" : "personal (~/.claude/skills)";
-console.log(`\n@theokit/skill installed the theokit-sdk skill.`);
-console.log(`  scope:  ${scope}`);
-console.log(`  path:   ${targetDir}`);
-console.log(`  files:  ${added} written${skipped ? `, ${skipped} kept (use --force to overwrite)` : ""}`);
-console.log(`\nRestart Claude Code (or it picks up ~/.claude/skills live), then it loads`);
-console.log(`automatically when you write @theokit/sdk code, or invoke it with /theokit-sdk.\n`);
+// ── --check: a CI gate, not an installer ─────────────────────────────────────────────────────
+
+if (options.check) {
+  const state = drift(projectRoot, { version, expected: plan });
+  if (state.kind === "current") {
+    console.log(`@theokit/skills: up to date — ${plan.length} skill installation(s) at v${version}.`);
+    process.exit(0);
+  }
+  const reason = {
+    absent: "no manifest found — the skills were never installed here",
+    version: `installed from v${state.installed}, this package is v${state.current}`,
+    missing: `${state.missing?.length ?? 0} installed path(s) no longer exist`,
+  }[state.kind];
+  console.error(`@theokit/skills: DRIFT — ${reason}.`);
+  console.error("  An instruction file that is out of date is followed as diligently as a current");
+  console.error("  one, which is why this is a failure and not a warning.");
+  console.error("  Fix: npx @theokit/skills --force");
+  process.exit(1);
+}
+
+// ── install ──────────────────────────────────────────────────────────────────────────────────
+
+const results = [];
+for (const item of plan) {
+  if (options.dryRun) {
+    results.push({ ...item, mode: preferLink ? "link" : "copy", changed: !existsSync(item.path), linkFailed: false });
+    continue;
+  }
+  results.push({ ...item, ...place(item.source, item.path, { preferLink, force: options.force }) });
+}
+
+if (!options.dryRun) {
+  writeManifest(projectRoot, {
+    version,
+    entries: results.map((r) => ({ skill: r.skill, target: r.target.id, path: relative(projectRoot, r.path), mode: r.mode })),
+  });
+}
+
+// ── report ───────────────────────────────────────────────────────────────────────────────────
+
+const scope = options.global ? "personal" : "project";
+console.log(`\n@theokit/skills v${version} — ${selected.length} skill(s), ${scope} scope${options.dryRun ? " (dry run)" : ""}`);
+
+for (const target of targets) {
+  const rows = results.filter((r) => r.target.id === target.id);
+  if (rows.length === 0) continue;
+  const written = rows.filter((r) => r.changed).length;
+  const kept = rows.length - written;
+  const mode = rows[0].mode === "link" ? "linked" : "copied";
+  console.log(`\n  ${target.label}  →  ${mode}`);
+  console.log(`    serves: ${target.serves.join(", ")}`);
+  console.log(`    ${written} written${kept > 0 ? `, ${kept} kept (use --force to replace)` : ""}`);
+  for (const row of rows) console.log(`      ${row.skill}  ${relative(projectRoot, row.path)}`);
+}
+
+const fellBack = results.some((r) => r.linkFailed);
+if (fellBack) {
+  console.log(`\n  Note: linking was refused by the filesystem, so these were copied instead.`);
+  console.log(`  On Windows that usually means junctions are unavailable. Copies work identically`);
+  console.log(`  for the agent; they just do not follow \`npm update\` — run \`--check\` in CI.`);
+} else if (!preferLink && !options.global && !options.dryRun) {
+  console.log(`\n  Copied, not linked: this package is not a dependency of ${relative(resolve(projectRoot, ".."), projectRoot) || "this project"}.`);
+  console.log(`  Install it (\`npm i -D @theokit/skills\`) and re-run to have the skills follow your lockfile.`);
+}
+
+console.log("");
+
+function usage() {
+  console.log(`@theokit/skills — install TheoKit agent skills for every AI coding tool you use
+
+  npx @theokit/skills                 install every bundled skill into the detected tools
+  npx @theokit/skills --check         fail if what is installed drifted from this version (CI)
+
+Options
+  --global            install for your user instead of this project
+  --force             replace what is already there
+  --copy              copy even where linking would work
+  --dry-run           print the plan, write nothing
+  --target=<id>       ${TARGETS.map((t) => t.id).join(" | ")}   (repeatable; default: detected)
+  --skill=<name>      install one skill (repeatable; default: all)
+
+Targets
+${TARGETS.map((t) => `  ${t.id.padEnd(8)} ${t.label.padEnd(16)} ${t.serves.join(", ")}`).join("\n")}`);
+}

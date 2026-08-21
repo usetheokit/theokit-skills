@@ -30,15 +30,20 @@
  *   common English noun as well as Portuguese, and a lexicon entry that fires
  *   on ordinary English is a gate that teaches people to ignore it.
  *
- * @internal
+ * PORTED FROM THE SDK REPO TO `node:test`. The original imported `vitest` and used `__dirname`,
+ * neither of which exists here: this package declares zero dependencies so that `npx` is instant,
+ * and it is ESM. The test therefore could never run — it failed at import, and the CI step that
+ * would have surfaced that (`node --test tests/`) fails on Node 22 before reaching any test. Two
+ * independent breakages hiding each other. The logic below is unchanged; only the runner is.
  */
 
-import type { Dirent } from "node:fs";
+import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
-import { join, relative, sep } from "node:path";
-import { describe, expect, it } from "vitest";
+import { dirname, join, relative, sep } from "node:path";
+import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
-const REPO_ROOT = join(__dirname, "..", "..");
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 /**
  * Scanned roots, relative to the repository root. `"."` means the whole repository.
@@ -63,11 +68,11 @@ const WORD_ALLOWLIST = new Set(["façade", "façades", "naïve", "café", "résu
 
 /** Files exempt from the scan, relative to the repository root. */
 /** B-065 — every CHANGELOG, root or per package. Released entries are immutable (Rule 6). */
-const isChangelog = (rel: string): boolean => rel === "CHANGELOG.md" || rel.endsWith("/CHANGELOG.md");
+const isChangelog = (rel) => rel === "CHANGELOG.md" || rel.endsWith("/CHANGELOG.md");
 
-const FILE_ALLOWLIST = new Set<string>([
+const FILE_ALLOWLIST = new Set([
   // This file names Portuguese words in order to ban them.
-  "tests/lint/no-ptbr.test.ts",
+  "tests/lint/no-ptbr.test.mjs",
   // B-065 — the repository CHANGELOG. Entries for a RELEASED version are immutable (Unbreakable
   // Rule 6): translating one would rewrite a record of what shipped, which is the discipline this
   // gate exists to serve rather than to override. New entries are written in English; the gate
@@ -268,14 +273,6 @@ const NOT_PROSE =
  */
 const INLINE_CODE = /`[^`\n]*`/g;
 
-interface Offender {
-  file: string;
-  line: number;
-  tier: "diacritic" | "lexicon";
-  words: string[];
-  text: string;
-}
-
 /**
  * Extensions the gate reads. `.md` and `.mjs` are in scope because `package.json` `files[]`
  * publishes README, docs and the claude-template to npm — Portuguese there reaches consumers
@@ -292,25 +289,22 @@ const SCANNED_EXT = /\.(?:ts|mts|cts|js|mjs|cjs|md)$/;
  */
 const SKIP_DIRS = new Set(["node_modules", "dist", "coverage", "docs-json"]);
 
-const isSkippedDir = (name: string): boolean => name.startsWith(".") || SKIP_DIRS.has(name);
+const isSkippedDir = (name) => name.startsWith(".") || SKIP_DIRS.has(name);
 
 /**
  * `withFileTypes` matters here, not as a micro-optimization: the first version called `stat` once
  * per entry while walking the whole monorepo, and the test blew a 20 s timeout. A gate slow enough
  * to time out is a gate someone disables.
  */
-async function walk(dir: string, out: string[] = []): Promise<string[]> {
-  // `Dirent[]` and NOT `Awaited<ReturnType<typeof readdir>>`: `readdir` is overloaded, and the type
-  // query collapses to ONE overload — the buffer one — so the annotation contradicted the call every
-  // time. `Dirent` defaults its name type to `string`, which is what a string path actually yields.
-  let entries: Dirent[];
+async function walk(dir, out = []) {
+  let entries;
   try {
     entries = await readdir(dir, { withFileTypes: true });
   } catch {
     // A scan root that does not exist is not a violation — packages come and go.
     return out;
   }
-  const subdirs: string[] = [];
+  const subdirs = [];
   for (const entry of entries) {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) {
@@ -324,16 +318,16 @@ async function walk(dir: string, out: string[] = []): Promise<string[]> {
 }
 
 /** Split an identifier into its camelCase / PascalCase / snake_case parts. */
-function identifierParts(word: string): string[] {
+function identifierParts(word) {
   return word.split(/[_$]/).flatMap((p) => p.match(/[A-Z]?[a-z]+|[A-Z]+(?![a-z])/g) ?? []);
 }
 
-function stripDiacritics(word: string): string {
+function stripDiacritics(word) {
   return word.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
 /** Every word-part of a line, with allowlisted loanwords already dropped. */
-function candidateParts(line: string): string[] {
+function candidateParts(line) {
   return (line.replace(INLINE_CODE, " ").replace(NOT_PROSE, " ").match(WORD) ?? [])
     .filter((token) => !WORD_ALLOWLIST.has(token.toLowerCase()))
     .flatMap(identifierParts)
@@ -341,7 +335,7 @@ function candidateParts(line: string): string[] {
 }
 
 /** Tier 1 wins over tier 2 so each line reports its strongest signal once. */
-function classifyLine(line: string): Pick<Offender, "tier" | "words"> | undefined {
+function classifyLine(line) {
   const parts = candidateParts(line);
 
   const diacritic = parts.filter((p) => DIACRITIC.test(p));
@@ -353,8 +347,8 @@ function classifyLine(line: string): Pick<Offender, "tier" | "words"> | undefine
   return undefined;
 }
 
-function scanText(rel: string, text: string): Offender[] {
-  const offenders: Offender[] = [];
+function scanText(rel, text) {
+  const offenders = [];
 
   text.split("\n").forEach((line, index) => {
     const hit = classifyLine(line);
@@ -366,7 +360,7 @@ function scanText(rel: string, text: string): Offender[] {
 }
 
 /** Filenames themselves must be English — a test file name is documentation. */
-function scanFilename(rel: string): Offender | undefined {
+function scanFilename(rel) {
   const base = rel.split(sep).pop() ?? rel;
   const hits = identifierParts(base.replace(/\.[^.]+$/, "").replace(/[.-]/g, "_")).filter(
     (p) => PT_LEXICON.has(stripDiacritics(p)) || DIACRITIC.test(p),
@@ -375,7 +369,7 @@ function scanFilename(rel: string): Offender | undefined {
   return { file: rel, line: 0, tier: "lexicon", words: [...new Set(hits)], text: base };
 }
 
-async function scanFile(file: string): Promise<Offender[]> {
+async function scanFile(file) {
   const rel = relative(REPO_ROOT, file).split(sep).join("/");
   if (FILE_ALLOWLIST.has(rel) || isChangelog(rel)) return [];
 
@@ -384,8 +378,8 @@ async function scanFile(file: string): Promise<Offender[]> {
   return named === undefined ? inside : [named, ...inside];
 }
 
-async function collectOffenders(): Promise<Offender[]> {
-  const files: string[] = [];
+async function collectOffenders() {
+  const files = [];
   for (const root of SCAN_ROOTS) files.push(...(await walk(join(REPO_ROOT, root))));
   const perFile = await Promise.all(files.map(scanFile));
   return perFile.flat();
@@ -398,12 +392,11 @@ async function collectOffenders(): Promise<Offender[]> {
  */
 const SWEEP_TIMEOUT_MS = 120_000;
 
-describe("codebase is English-only (no PT-BR)", () => {
-  it(
-    "packages source and tests carry no Portuguese",
-    async () => {
-      expect(await collectOffenders()).toEqual([]);
-    },
-    SWEEP_TIMEOUT_MS,
-  );
+test("the repository carries no Portuguese", { timeout: SWEEP_TIMEOUT_MS }, async () => {
+  const offenders = await collectOffenders();
+  // Report every hit with its line, so a failure is actionable without re-running anything.
+  const report = offenders
+    .map((o) => `  ${o.file}:${o.line}  [${o.tier}] ${o.words.join(", ")}\n      ${o.text}`)
+    .join("\n");
+  assert.deepEqual(offenders, [], offenders.length === 0 ? undefined : `\n${report}\n`);
 });
