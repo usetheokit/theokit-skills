@@ -9,19 +9,30 @@ The TypeScript SDK for the Theo agent harness. One API, two runtimes (local / cl
 
 Requires Node 22.12+. `npm install @theokit/sdk`. Auth via `THEOKIT_API_KEY` (or an explicit `apiKey` option).
 
-## Module references
+## Per-module skills
 
-Per-module snippets live in `references/` — load the one that matches the surface you are working on. This set covers every public `@theokit/sdk` subpath.
+Thirty sibling skills cover the rest of the surface, one per module. Each carries a `paths:` glob, so
+the one matching what you are editing loads on its own and the others cost nothing — the whole reason
+they are separate skills rather than one long document.
 
-**Core** — [`agent-core`](references/agent-core.md) (create/prompt/send/resume, factory) · [`tools`](references/tools.md) (Tool.create, `@theokit/sdk-tools`, hooks) · [`streaming`](references/streaming.md) (SDKMessage, deltas) · [`memory`](references/memory.md) · [`cron`](references/cron.md) · [`errors`](references/errors.md) · [`workflows`](references/workflows.md) · [`eval`](references/eval.md) · [`subscriptions`](references/subscriptions.md) · [`budget`](references/budget.md) · [`config`](references/config.md).
+**Core** — `theokit-agent-core` (create/prompt/send/resume, factory) · `theokit-tools` (Tool.create,
+`@theokit/sdk-tools`, hooks) · `theokit-streaming` (SDKMessage, deltas) · `theokit-memory` ·
+`theokit-cron` · `theokit-errors` · `theokit-workflows` · `theokit-eval` · `theokit-subscriptions` ·
+`theokit-budget` · `theokit-config`.
 
-**Models, runtime & delegation** — [`models`](references/models.md) · [`subagents`](references/subagents.md) (`/a2a` + tool-scope) · [`retry`](references/retry.md) · [`task-store`](references/task-store.md) · [`sandbox`](references/sandbox.md) · [`compaction`](references/compaction.md) · [`messages`](references/messages.md) (readers) · [`sanitize`](references/sanitize.md) · [`skills`](references/skills.md) · [`auth`](references/auth.md) (`/server/auth` + errors-envelope).
+**Models, runtime & delegation** — `theokit-models` · `theokit-subagents` (`/a2a` + tool-scope) ·
+`theokit-retry` · `theokit-task-store` · `theokit-sandbox` · `theokit-compaction` ·
+`theokit-messages` (readers) · `theokit-sanitize` · `theokit-skills` · `theokit-auth`
+(`/server/auth` + errors-envelope).
 
-**Utilities** — [`path-safety`](references/path-safety.md) · [`concurrency`](references/concurrency.md) · [`persistence`](references/persistence.md) · [`client`](references/client.md) · [`filesystem`](references/filesystem.md) · [`project`](references/project.md).
+**Utilities** — `theokit-path-safety` · `theokit-concurrency` · `theokit-persistence` ·
+`theokit-client` · `theokit-filesystem` · `theokit-project`.
 
-**Optional ecosystem packages** (separate installs) — [`di`](references/di.md) (`@theokit/di`) · [`di-agent`](references/di-agent.md) (`@theokit/di-agent` decorators) · [`gateways`](references/gateways.md) (`@theokit/gateway-*`).
+**Optional ecosystem packages** (separate installs) — `theokit-di` (`@theokit/di`) ·
+`theokit-di-agent` (decorators) · `theokit-gateways` (`@theokit/gateway-*`).
 
-These are generated from the `@theokit/sdk` scaffold — one source of truth, drift-gated by the SDK's CI. Regenerate with `node scripts/sync-references.mjs`.
+They are authored here and gated against the installed `@theokit/sdk` type declarations, so a skill
+cannot teach an API the package does not have.
 
 ## Import map (verified subpaths)
 

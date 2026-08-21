@@ -11,8 +11,7 @@
     "lib",
     "skills",
     "README.md",
-    "LICENSE",
-    "scripts"
+    "LICENSE"
   ],
   "license": "Apache-2.0",
   "homepage": "https://github.com/usetheokit/theokit-skills#readme",
@@ -39,7 +38,6 @@
     "access": "public"
   },
   "scripts": {
-    "sync-references": "node scripts/sync-references.mjs",
     "test": "node --test",
     "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
     "prepublishOnly": "npm test"
