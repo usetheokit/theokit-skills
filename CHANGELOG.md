@@ -4,6 +4,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Added
+
+- `Workflow Lint`, a CI gate running actionlint and zizmor over `.github/workflows/` (#4)
+- `engines`, `packageManager` and `.nvmrc`, so CI and a contributor resolve the same Node and
+  pnpm instead of each taking whatever they find (#4)
+
+### Security
+
+- The publish step no longer sets `NODE_AUTH_TOKEN`. It was a bootstrap crutch kept after the
+  bootstrap, and the npm CLI prefers token auth over OIDC — so re-adding the secret for any reason
+  would have silently dropped the trusted-publisher binding and the provenance attestation with
+  it, with no error (#4)
+- Every GitHub Action is pinned to a commit SHA rather than a movable tag, and the npm that
+  performs the publish is pinned to an exact version rather than `@latest` (#4)
+- Checkouts no longer leave the job token in `.git/config`; nothing here pushes with git (#4)
+
 ## [0.4.1] - 2026-08-20
 
 ### Changed
