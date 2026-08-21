@@ -77,7 +77,7 @@ jobs:
           node-version-file: '.nvmrc'
           registry-url: "https://registry.npmjs.org"
 
-      - name: npm >= 11.5.1, the floor for OIDC publishing
+      - name: npm >= 11.5.1, the floor for OIDC publishing # zizmor: ignore[adhoc-packages]
         # The runner's bundled npm trails the Node release, and a version below the floor fails at
         # publish time with an auth error that says nothing about the version. Upgrading is cheap and
         # removes a diagnosis nobody would enjoy.
@@ -86,7 +86,7 @@ jobs:
           # a new npm arriving on its own would be an unreviewed change to the release
           # path. 11.9.0 clears the OIDC floor (11.5.1) and is the version the rest of
           # the organisation runs.
-          npm install -g npm@11.9.0
+          npm install -g npm@11.9.0 # zizmor: ignore[adhoc-packages] — bootstrapping npm itself; no lockfile can cover the package manager
           npm --version
 
       - name: The tag and the manifest must agree
@@ -127,7 +127,11 @@ jobs:
             exit 1
           fi
 
-      - name: Pack and install the tarball the way a consumer would
+      # zizmor: ignore[adhoc-packages] — installing the tarball this job just packed IS the test.
+      # It proves that what `files[]` ships works when a consumer installs it, which no lockfile
+      # can express. The pragma sits on the step because a `#` inside a `run:` block is shell,
+      # not YAML, and never reaches the audit.
+      - name: Pack and install the tarball the way a consumer would # zizmor: ignore[adhoc-packages]
         shell: bash
         run: |
           set -euo pipefail
