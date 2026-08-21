@@ -41,31 +41,40 @@ jobs:
   verify:
     name: verify (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: true
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: "22"
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0 # zizmor: ignore[cache-poisoning]
+        with:
+          # No `cache:` input, so setup-node restores nothing a pull request could
+          # have written. The audit fires on the tag trigger alone.
+          node-version-file: '.nvmrc'
       - run: npm test
 
   publish:
     name: publish to npm
     needs: verify
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: npm
     permissions:
       contents: write # create the GitHub Release
       id-token: write # npm provenance — see the publish step
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Publishing goes through `npm publish`; nothing here pushes with git.
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0 # zizmor: ignore[cache-poisoning]
         with:
           # >= 22.14.0 is the floor npm states for OIDC publishing; `22` resolves to the latest 22.x.
-          node-version: "22"
+          node-version-file: '.nvmrc'
           registry-url: "https://registry.npmjs.org"
 
       - name: npm >= 11.5.1, the floor for OIDC publishing
@@ -73,7 +82,11 @@ jobs:
         # publish time with an auth error that says nothing about the version. Upgrading is cheap and
         # removes a diagnosis nobody would enjoy.
         run: |
-          npm install -g npm@latest
+          # Pinned exactly rather than `@latest`: this binary performs the publish, and
+          # a new npm arriving on its own would be an unreviewed change to the release
+          # path. 11.9.0 clears the OIDC floor (11.5.1) and is the version the rest of
+          # the organisation runs.
+          npm install -g npm@11.9.0
           npm --version
 
       - name: The tag and the manifest must agree
@@ -135,13 +148,16 @@ jobs:
         if: github.event_name == 'push' || inputs.dry_run == false
         # Provenance is a signed, verifiable statement linking this tarball to this commit and this
         # workflow, so a consumer can check where their bytes came from instead of trusting a name.
-        # Trusted publishing emits it automatically; `--provenance` is passed anyway so the bootstrap
-        # publish — which authenticates with a token — produces it too.
+        # Trusted publishing emits it automatically; `--provenance` is passed anyway as a statement
+        # of intent that survives if the auth path is ever changed.
+        #
+        # NO `NODE_AUTH_TOKEN`. It used to be wired to `secrets.NPM_TOKEN` as a bootstrap crutch,
+        # with the note that it would be empty in steady state. That is true only while the secret
+        # is absent, and it is the wrong thing to depend on: the npm CLI PREFERS token auth over the
+        # OIDC token from `id-token: write`, so the day someone re-adds NPM_TOKEN for any reason,
+        # this publish silently stops using the trusted publisher and stops carrying provenance —
+        # with no error to notice. The bootstrap is done; the crutch is now only a way to lose.
         run: npm publish --provenance --access public
-        env:
-          # Empty in steady state. npm falls back to the OIDC credential when this is unset, which is
-          # the whole point: the secret is a bootstrap crutch, not part of the design.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish skipped (dry run)
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run
