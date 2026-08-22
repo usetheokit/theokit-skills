@@ -60,13 +60,26 @@ jobs:
             echo "an open issue already tracks this"
             exit 0
           fi
-          {
-            printf 'The scheduled drift check failed against `@theokit/sdk@%s`.\n\n' "$SDK"
-            printf 'A skill here teaches a symbol or subpath the published SDK does not export. That is\n'
-            printf 'not a stale doc: an agent follows it and writes code that does not compile, with the\n'
-            printf 'confidence of something it was told.\n\n'
-            printf 'Reproduce locally:\n\n'
-            printf '```bash\nnpm install --no-save @theokit/sdk@latest typescript\nnpm test\n```\n\n'
-            printf 'Workflow run: %s\n' "$RUN_URL"
-          } > issue-body.md
+          # A quoted heredoc, not a printf chain: the body contains backticks, and shellcheck reads
+          # a backtick inside single quotes as command substitution (SC2016). Quoting the delimiter
+          # also stops the shell expanding anything in the body, so the two values are substituted
+          # explicitly below and nothing else can be.
+          cat > issue-body.template <<'BODY'
+          The scheduled drift check failed against `@theokit/sdk@__SDK__`.
+
+          A skill here teaches a symbol or subpath the published SDK does not export. That is not a
+          stale doc: an agent follows it and writes code that does not compile, with the confidence
+          of something it was told.
+
+          Reproduce locally:
+
+          ```bash
+          npm install --no-save @theokit/sdk@latest typescript
+          npm test
+          ```
+
+          Workflow run: __RUN_URL__
+          BODY
+          sed -e "s|__SDK__|${SDK}|g" -e "s|__RUN_URL__|${RUN_URL}|g" issue-body.template \
+            | sed 's/^          //' > issue-body.md
           gh issue create --title "$title" --body-file issue-body.md
