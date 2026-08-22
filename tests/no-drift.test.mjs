@@ -15,11 +15,10 @@
  * skills teach by contrast, and a gate that forbade naming the old API would forbid explaining it.
  *
  * WHAT THIS CANNOT DO, stated rather than implied: it matches names, it does not resolve them. A
- * skill importing a symbol that never existed passes here. The stronger oracle is
- * `@theokit/sdk`'s `docs/harness-capability-map.md` — every public symbol with the exact specifier
- * to import it from — which would turn this into a resolution check with no TypeScript needed. It
- * is not used yet because the published `@theokit/sdk` does not carry `docs/` until its next
- * release. Wire it the day it does.
+ * skill importing a symbol that never existed passes here — `api-resolves.test.mjs` is the gate for
+ * that, compiling every import against the installed package. The two are complementary: this one
+ * knows about APIs that were REMOVED (a name that resolves today can still be the wrong thing to
+ * teach), and that one knows about names that never existed at all.
  *
  * Run: `npm test` (node --test, zero dependencies).
  */
