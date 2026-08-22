@@ -29,6 +29,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # This job never pushes, and the issue it opens authenticates through GH_TOKEN.
+          # Leaving the checkout credential in `.git/config` would be a token nothing needs.
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
@@ -37,11 +41,10 @@ jobs:
         id: install
         run: |
           set -euo pipefail
-          # zizmor: ignore[adhoc-packages] — installing @latest at runtime IS the check. This job
-          # exists to ask whether the skills still resolve against whatever the SDK publishes
-          # today; a lockfile would pin the very thing being tested and the job would pass
-          # forever while the skills drifted.
-          npm install --no-save @theokit/sdk@latest typescript
+          # Installing @latest at runtime IS the check: this job asks whether the skills still
+          # resolve against whatever the SDK publishes today. A lockfile would pin the very thing
+          # being tested, and the job would pass forever while the skills drifted.
+          npm install --no-save @theokit/sdk@latest typescript # zizmor: ignore[adhoc-packages]
           echo "sdk=$(node -p "require('./node_modules/@theokit/sdk/package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Resolve every symbol the skills teach
