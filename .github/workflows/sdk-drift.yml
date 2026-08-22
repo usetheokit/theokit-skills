@@ -37,6 +37,10 @@ jobs:
         id: install
         run: |
           set -euo pipefail
+          # zizmor: ignore[adhoc-packages] — installing @latest at runtime IS the check. This job
+          # exists to ask whether the skills still resolve against whatever the SDK publishes
+          # today; a lockfile would pin the very thing being tested and the job would pass
+          # forever while the skills drifted.
           npm install --no-save @theokit/sdk@latest typescript
           echo "sdk=$(node -p "require('./node_modules/@theokit/sdk/package.json').version")" >> "$GITHUB_OUTPUT"
 

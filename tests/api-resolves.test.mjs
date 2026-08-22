@@ -24,18 +24,24 @@
  * and the gateway packages are not installed here, and a gate that quietly ignored them would
  * report a coverage it never had.
  *
+ * The compiler runs IN PROCESS. An earlier version spawned `npx tsc`, which fails on Windows with
+ * `spawnSync npx ENOENT` — the executable there is `npx.cmd`, and `execFileSync` does not resolve
+ * it. Guessing the right binary name per platform is the wrong fix when `typescript` is a direct
+ * devDependency: `ts.createProgram` removes the subprocess, the platform difference and the startup
+ * cost at once.
+ *
  * Run: `npm test` (node --test; uses the `typescript` devDependency, which consumers never install).
  */
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const skillsDir = join(root, "skills");
-const probeDir = join(root, ".api-probe");
+const ts = createRequire(import.meta.url)("typescript");
 
 /** Packages installed here, so the gate can say what it did and did not check. */
 function installedPackages() {
@@ -122,49 +128,46 @@ test("every @theokit symbol a skill teaches resolves in the installed package", 
   }
   assert.ok(probes.length > 0, "no checkable import found — the extractor is broken, not the skills");
 
-  rmSync(probeDir, { recursive: true, force: true });
-  mkdirSync(probeDir, { recursive: true });
-  probes.forEach((p, i) => {
-    writeFileSync(join(probeDir, `p${i + 1}.ts`), `import { ${p.names.join(", ")} } from "${p.specifier}";\n`);
-  });
-  writeFileSync(
-    join(probeDir, "tsconfig.json"),
-    `${JSON.stringify(
-      {
-        compilerOptions: {
-          noEmit: true, strict: false, skipLibCheck: true, target: "ES2022",
-          module: "ESNext", moduleResolution: "Bundler", types: [], baseUrl: ".", paths,
-        },
-        include: ["*.ts"],
-      },
-      null,
-      2,
-    )}\n`,
+  // One in-memory program over synthetic probe files: no temp directory, no subprocess, no
+  // platform-specific executable name.
+  const sources = new Map(
+    probes.map((p, i) => [`p${i + 1}.ts`, `import { ${p.names.join(", ")} } from "${p.specifier}";\n`]),
   );
+  const options = {
+    noEmit: true,
+    strict: false,
+    skipLibCheck: true,
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    types: [],
+    baseUrl: root,
+    // pnpm and npm both isolate `node_modules`, so a probe compiled without an explicit map cannot
+    // resolve the MODULE — and a module that does not resolve reports every name as missing, which
+    // reads exactly like the defect being looked for.
+    paths,
+  };
+  const host = ts.createCompilerHost(options, true);
+  const readOriginal = host.getSourceFile.bind(host);
+  host.getSourceFile = (name, languageVersion, ...rest) => {
+    const synthetic = sources.get(name);
+    return synthetic === undefined
+      ? readOriginal(name, languageVersion, ...rest)
+      : ts.createSourceFile(name, synthetic, languageVersion, true);
+  };
+  host.fileExists = (name) => sources.has(name) || existsSync(name);
+  host.readFile = (name) => sources.get(name) ?? (existsSync(name) ? readFileSync(name, "utf8") : undefined);
 
-  let output = "";
-  try {
-    execFileSync("npx", ["tsc", "-p", join(probeDir, "tsconfig.json")], {
-      cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
-    });
-  } catch (error) {
-    if (typeof error.status !== "number") {
-      rmSync(probeDir, { recursive: true, force: true });
-      assert.fail(`tsc could not be run: ${error.message}. A gate that cannot invoke its tool checked nothing.`);
-    }
-    output = `${error.stdout ?? ""}${error.stderr ?? ""}`;
-  }
-
+  const program = ts.createProgram([...sources.keys()], options, host);
   const findings = [];
-  for (const line of output.split("\n")) {
-    const m = /p(\d+)\.ts\(\d+,\d+\): error TS\d+: (.+)$/.exec(line.trim());
-    if (m === null) continue;
-    const probe = probes[Number(m[1]) - 1];
-    if (probe !== undefined) {
-      findings.push(`${probe.file.replace(`${root}/`, "")}  ${probe.specifier}  ::  ${m[2]}`);
-    }
+  for (const diagnostic of program.getSemanticDiagnostics()) {
+    const name = diagnostic.file?.fileName;
+    const index = name === undefined ? -1 : Number(/^p(\d+)\.ts$/.exec(name)?.[1] ?? 0) - 1;
+    const probe = probes[index];
+    if (probe === undefined) continue;
+    const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, " ");
+    findings.push(`${probe.file.replace(`${root}/`, "")}  ${probe.specifier}  ::  ${message}`);
   }
-  rmSync(probeDir, { recursive: true, force: true });
 
   // Reported on success too: a gate that silently narrows its own scope claims coverage it lacks.
   if (unchecked.size > 0) {
