@@ -37,7 +37,7 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install against the latest published @theokit/sdk
+      - name: Install against the latest published @theokit/sdk # zizmor: ignore[adhoc-packages]
         id: install
         run: |
           set -euo pipefail
