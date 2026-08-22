@@ -15,7 +15,8 @@ Quick reference for declarative multi-step orchestration (v1.17+).
 ## Workflow.create / .run
 
 ```typescript
-import { Agent, Workflow, fn, agentStep } from "@theokit/sdk";
+import { Agent } from "@theokit/sdk";
+import { Workflow, fn, agentStep } from "@theokit/sdk/workflow";
 
 const classifier = await Agent.create({ /* ... */ });
 const billingExpert = await Agent.create({ /* ... */ });
@@ -45,7 +46,7 @@ console.log(run.status, run.output);
 ### fn step (pure function)
 
 ```typescript
-import { fn } from "@theokit/sdk";
+import { fn } from "@theokit/sdk/workflow";
 
 fn("validate", (input, ctx) => {
   // input: previous step's output
@@ -67,7 +68,7 @@ fn("validate", (input, ctx) => {
 ### agentStep (agent.send wrapper)
 
 ```typescript
-import { agentStep } from "@theokit/sdk";
+import { agentStep } from "@theokit/sdk/workflow";
 
 agentStep("classify", agent, (input) => `Classify this: ${JSON.stringify(input)}`, {
   retry: { maxAttempts: 2, initialBackoffMs: 2000 },

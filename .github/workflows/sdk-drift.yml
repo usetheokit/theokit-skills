@@ -1,0 +1,72 @@
+name: sdk-drift
+
+# THE COUPLING THESE SKILLS LOST, REBUILT AS A SCHEDULE.
+#
+# They used to be authored inside `@theokit/sdk`, so a pull request removing an export touched them
+# in the same diff and that repo's gate fired. They live here now and that is gone: the SDK can
+# delete a symbol tomorrow and nothing in this repository would notice until a user followed a skill
+# that lies.
+#
+# So the check runs on a clock against whatever `@theokit/sdk` is CURRENTLY published — not the
+# version in the lockfile, which is exactly the version that cannot tell you anything new. A failure
+# here means the published API moved out from under a skill, and it opens an issue rather than
+# turning a Slack notification nobody reads into the whole alerting story.
+
+on:
+  schedule:
+    # 06:00 UTC daily. A published API change is worth catching in a day; a week is long enough for
+    # someone to have followed the stale instruction and filed a bug against the wrong thing.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  drift:
+    name: skills vs the published SDK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install against the latest published @theokit/sdk
+        id: install
+        run: |
+          set -euo pipefail
+          npm install --no-save @theokit/sdk@latest typescript
+          echo "sdk=$(node -p "require('./node_modules/@theokit/sdk/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve every symbol the skills teach
+        id: check
+        run: npm test
+
+      - name: Open an issue when a skill teaches an API the package no longer has
+        if: failure() && steps.check.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SDK: ${{ steps.install.outputs.sdk }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="skills drifted from @theokit/sdk@${SDK}"
+          # One open issue at a time: a daily job that files a duplicate every morning trains people
+          # to close them unread, which is worse than not filing at all.
+          open_count="$(gh issue list --state open --search "$title in:title" --json number --jq 'length')"
+          if [ "$open_count" != "0" ]; then
+            echo "an open issue already tracks this"
+            exit 0
+          fi
+          {
+            printf 'The scheduled drift check failed against `@theokit/sdk@%s`.\n\n' "$SDK"
+            printf 'A skill here teaches a symbol or subpath the published SDK does not export. That is\n'
+            printf 'not a stale doc: an agent follows it and writes code that does not compile, with the\n'
+            printf 'confidence of something it was told.\n\n'
+            printf 'Reproduce locally:\n\n'
+            printf '```bash\nnpm install --no-save @theokit/sdk@latest typescript\nnpm test\n```\n\n'
+            printf 'Workflow run: %s\n' "$RUN_URL"
+          } > issue-body.md
+          gh issue create --title "$title" --body-file issue-body.md

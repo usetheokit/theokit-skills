@@ -4,6 +4,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-08-20
+
+### Fixed
+
+- `theokit-workflows` taught `import { Workflow, fn, agentStep } from "@theokit/sdk"`. The published SDK exports those from `@theokit/sdk/workflow`, not the root, so an agent following the skill wrote an import that does not compile. Found by the new resolution gate on its first run, which is the argument for the gate.
+
+### Added
+
+- A gate that RESOLVES every `@theokit` symbol the skills teach against the installed SDK, rather than matching known-bad names. The sibling pattern gate knows the twelve factories removed at v3.0 and cannot know the thirteenth; this one asks the compiler the same question a reader's editor asks. `typescript` and `@theokit/sdk` are devDependencies, which never reach a consumer, so `npx @theokit/skills` is unaffected.
+- A scheduled workflow that runs that gate against whatever `@theokit/sdk` is CURRENTLY published and opens one issue when it fails. These skills used to live inside the SDK, so a pull request removing an export touched them in the same diff; that coupling is gone, and this is what replaces it. Measured at the move: the SDK's own drift gate went from 112 verified imports to 43, and the 69 that left were these.
+
 ### Added
 
 - `Workflow Lint`, a CI gate running actionlint and zizmor over `.github/workflows/` (#4)
