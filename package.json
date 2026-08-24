@@ -45,6 +45,6 @@
     "prepublishOnly": "npm test"
   },
   "devDependencies": {
-    "@theokit/sdk": "^4.2.8"
+    "@theokit/sdk": "^4.53.1"
   }
 }
