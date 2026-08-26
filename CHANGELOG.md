@@ -8,6 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 - A resolution gate: every `import` in every skill is compiled against the installed `@theokit/sdk`, so a symbol that never existed — or one imported from a subpath that does not export it — fails CI. The sibling drift gate matches names it was told about; this one asks the compiler. Specifiers it cannot check (`@theokit/di`, `@theokit/di-agent`, the gateway packages, which are not installed here) are named on every run rather than silently skipped.
 
+### Fixed
+
+- The manifest no longer claims this package is built with pnpm. `packageManager` named pnpm and
+  `engines` required `pnpm >= 10.34.1`, while the repository ships a `package-lock.json`, has no
+  pnpm lockfile, and installs with `npm` in every CI job — so a contributor who trusted the field
+  and ran `pnpm install` got a working install and a **second lockfile**, after which the two
+  disagreed about the tree and only one of them was under test.
+
+  `engines.pnpm` is the half that would have reached consumers: it is published metadata, and pnpm
+  validates it. A user running `pnpm dlx @theokit/skills` on pnpm 9 would have been told this CLI
+  needs a package manager it does not use. It never shipped — 0.4.1 is the published version and
+  carries no `engines` at all — so this corrects it before anyone could hit it.
+
+  `engines.node` and `.nvmrc` stay. Pinning Node was the useful half of that change; pinning a
+  package manager the repository does not use was not. (#5)
+
 ## [0.4.2] - 2026-08-20
 
 ### Fixed
