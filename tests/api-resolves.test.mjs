@@ -39,6 +39,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
+import { importsIn, skillFiles } from "./_skills.mjs";
+
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const skillsDir = join(root, "skills");
 const ts = createRequire(import.meta.url)("typescript");
@@ -58,40 +60,6 @@ function installedPackages() {
  * prose: an earlier version matched the word anywhere in the preceding lines and hid a real finding
  * behind an ordinary sentence containing "before".
  */
-const DEPRECATED_FENCE = /^(before|old|legacy|deprecated|don'?t|do not|instead of|❌)\b.{0,40}:$/i;
-
-function deprecatedRanges(text) {
-  const ranges = [];
-  for (const m of text.matchAll(/```[a-z]*\n([\s\S]*?)```/g)) {
-    const preceding = text.slice(Math.max(0, m.index - 200), m.index).split("\n").filter((l) => l.trim());
-    if (DEPRECATED_FENCE.test(preceding.at(-1)?.trim() ?? "")) ranges.push([m.index, m.index + m[0].length]);
-  }
-  return ranges;
-}
-
-/** `import { a, b as c } from "x"` — value and type forms alike. */
-function importsIn(text) {
-  const skip = deprecatedRanges(text);
-  const found = [];
-  for (const m of text.matchAll(/import\s*(?:type\s+)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/g)) {
-    if (skip.some(([a, b]) => m.index >= a && m.index < b)) continue;
-    const names = m[1]
-      .split(",")
-      .map((s) => s.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0]?.trim())
-      .filter((n) => n && /^[A-Za-z_$][\w$]*$/.test(n));
-    if (names.length > 0) found.push({ specifier: m[2], names });
-  }
-  return found;
-}
-
-function skillFiles() {
-  return readdirSync(skillsDir, { withFileTypes: true })
-    .filter((e) => e.isDirectory())
-    .map((e) => join(skillsDir, e.name, "SKILL.md"))
-    .filter((p) => existsSync(p))
-    .sort();
-}
-
 /** Declared subpath → its built `.d.ts`, for an installed package. */
 function typePaths(pkg) {
   const dir = join(root, "node_modules", ...pkg.split("/"));

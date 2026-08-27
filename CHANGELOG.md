@@ -6,9 +6,82 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Added
 
-- A resolution gate: every `import` in every skill is compiled against the installed `@theokit/sdk`, so a symbol that never existed — or one imported from a subpath that does not export it — fails CI. The sibling drift gate matches names it was told about; this one asks the compiler. Specifiers it cannot check (`@theokit/di`, `@theokit/di-agent`, the gateway packages, which are not installed here) are named on every run rather than silently skipped.
+### Changed
+
+### Deprecated
+
+### Removed
 
 ### Fixed
+
+### Security
+
+## [0.5.0] - 2026-08-27
+
+### Added
+
+- Mutation testing, configured against the existing `node --test` suite. The first run measured
+  **456 mutants and a score of 58.8%** (268 killed, 188 survived) over `lib/` and `bin/`. That is
+  below the 60% floor, so the quality gate stays capped — by a measurement now, rather than by the
+  absence of one. Three consecutive plans had dismissed that cap by ADR, which is how a gate becomes
+  a ritual. Read the score with its shape: a third of the survivors are string literals in report
+  output, which no test asserts on deliberately, so 58.8% under-reports the real protection.
+  `lib/manifest.mjs` survives only 13% of its mutants; `bin/install.mjs` survives 48%. (B-007)
+
+- The nightly drift job now installs **every** `@theokit` package the skills import at `@latest`,
+  not only `@theokit/sdk`. Measured before the change: the skills teach **175 symbols across seven
+  packages**, and the job reached 137 of them (78%) at a currently published version — the other 38
+  arrived from the lockfile, at versions that by construction cannot have moved. A removed export
+  in a gateway adapter or in `@theokit/di` produced no signal here. The job also prints its own
+  coverage now (`taught-surface-coverage: 7/7`), so the same gap cannot return silently when a
+  package is added to a skill and not to the install line. (B-004)
+
+- The drift gate now resolves the five `@theokit` specifiers it used to report as
+  `not checked (not installed here)`. `@theokit/di`, `@theokit/di-agent` and the Discord, Slack and
+  Telegram gateway adapters are installed as devDependencies, so the 33 symbols four skills teach
+  from them are compiled against the published declarations instead of being named as unverified.
+  Measured: **68 imports resolved before, 103 after**. A new assertion turns the old stdout report
+  into a gate that can fail — it carries the same anti-vacuity guard as its sibling, so a broken
+  extractor goes red instead of green. `dependencies` stays empty; `npx @theokit/skills` is
+  unaffected. (B-005)
+
+- A resolution gate: every `import` in every skill is compiled against the installed `@theokit/sdk`, so a symbol that never existed — or one imported from a subpath that does not export it — fails CI. The sibling drift gate matches names it was told about; this one asks the compiler. Specifiers it cannot check (`@theokit/di`, `@theokit/di-agent`, the gateway packages, which are not installed here) are named on every run rather than silently skipped.
+
+
+### Changed
+
+- The code-quality allowlist carries one entry, sunset `2026-11-25`, downgrading the
+  `mutation_unconfigured` soft cap by a single level. Required by
+  `code-quality-golden-rule.md § 4`, and recorded because it is not a decision that mutation
+  testing is unnecessary: without it, no plan in this repository could pass the `/implement` gate,
+  including the plan that would configure the mutation runner. Owned by B-007; remove the entry
+  when that lands.
+
+
+### Fixed
+
+- `qs` was pinned to a version carrying a moderate DoS advisory, reachable through two dev-only
+  paths (the new mutation tooling, and the Slack gateway adapter added earlier today). An
+  `overrides` entry moves it to a patched release: `npm audit` reports zero at every severity.
+  Dev tree only — `dependencies` stays empty and nothing here reaches a consumer. (B-007)
+
+- The test written to prevent the two gates diverging could not detect the divergence. It compared
+  `specifiersIn` against `importsIn`, and the first is implemented by calling the second — a wrapper
+  against its own delegate, agreeing by construction. Replaced by a structural guard that reads every
+  test file and fails when one parses imports itself; demonstrated failing against the exact
+  divergence it exists to catch. (B-008)
+
+- The two drift gates disagreed about what counts as a taught import: `no-blind-specifier` carried
+  a copy of `api-resolves`'s extractor without its deprecated-fence exclusion, so an import inside
+  a `Before:` or `Don't:` block counted for one gate and not the other. Latent — no skill teaches
+  by contrast with an uninstalled package today — and active the first time one does. There is now
+  one extractor in `tests/_skills.mjs`, with the exclusion as the default rather than the option,
+  and a structural guard that fails when any test file parses imports itself. (B-008)
+
+- The deprecated-fence marker never matched `❌ Do not:`, despite listing `❌`. The pattern put the
+  emoji inside a group followed by `\b`, and a word boundary after a non-word character does not
+  match what follows — so an example marked with the emoji was treated as a real import by BOTH
+  gates. Found by the new agreement test, not by a reader. (B-008)
 
 - The manifest no longer claims this package is built with pnpm. `packageManager` named pnpm and
   `engines` required `pnpm >= 10.34.1`, while the repository ships a `package-lock.json`, has no
@@ -23,6 +96,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
   `engines.node` and `.nvmrc` stay. Pinning Node was the useful half of that change; pinning a
   package manager the repository does not use was not. (#5)
+
+### Security
+
+- The nightly drift job installs its seven packages with `--ignore-scripts`. It resolves them at
+  `@latest` into a runner holding `issues: write`, so a lifecycle script in any of them — or in
+  anything they pull — would have run with that token. Measured before the change: zero packages in
+  the resolved tree declare `preinstall`/`install`/`postinstall`, so the flag closes the path
+  without costing anything. Found by SonarQube (`githubactions:S6505`) on the release PR, in the
+  install line this release had just widened from one package to seven. The companion finding
+  (`S8543`, unlocked versions) is reviewed and left open: pinning would pin the very thing the job
+  tests, and the rule's remedy does not apply to a job whose function is to resolve `@latest`. Two
+  attempts to record that exception in `sonar-project.properties` were pushed and measured, and
+  neither took effect — automatic analysis does not read issue-ignore properties — so the block was
+  removed rather than kept as a control that does nothing.
+
 
 ## [0.4.2] - 2026-08-20
 

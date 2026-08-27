@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "_comment": "B-007. D4 of /code-quality reads this file's EXISTENCE to decide whether mutation testing is configured (detectors/_mutation.py:200), and reads reports/mutation/mutation.json for the score — never the exit code, because a runner that collected nothing still exits 0.",
+
+  "packageManager": "npm",
+  "reporters": ["json", "clear-text", "progress"],
+
+  "testRunner": "command",
+  "commandRunner": { "command": "npm test" },
+
+  "_comment_runner": "The `command` runner rather than a framework adapter: the suite is `node --test`, and adopting Vitest to get a first-class adapter would rewrite 1339 lines of working tests to satisfy a tool that already handles this case (ADR-1).",
+
+  "mutate": ["lib/**/*.mjs", "bin/**/*.mjs"],
+
+  "_comment_scope": "480 lines, the installer and its three modules — the product. `skills/` is Markdown with nothing to mutate, and mutating `tests/` measures only that an assertion changed (ADR-2).",
+
+  "thresholds": { "high": 80, "low": 60, "break": null },
+
+  "_comment_thresholds": "Mirrors code-quality-golden-rule.md § 2: below 60 caps the audit at 70, 60-79 caps at 89. `break` is null on purpose — this run exists to produce a number, and failing the command on a low score would hide the survivors that are the finding (ADR-3).",
+
+  "timeoutMS": 60000,
+  "concurrency": 4
+}
