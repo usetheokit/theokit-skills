@@ -82,6 +82,11 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
+          # shellcheck disable=SC2016  # F-dom-1: the `${…}` below are JS template literals inside a
+          # single-quoted `node -e` argument, not shell expansions. shellcheck cannot tell the two
+          # apart, and actionlint exits 1 on ANY shellcheck output regardless of its severity — so
+          # an `info` finding turns `workflow-lint.yml` red. That lint is the safety net this file's
+          # own plan named, and tripping it would have been the change breaking its own guard.
           node -e '
             const fs=require("fs"),path=require("path");
             const taught=new Set();
