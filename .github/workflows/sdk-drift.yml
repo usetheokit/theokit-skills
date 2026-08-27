@@ -27,6 +27,14 @@ jobs:
   drift:
     name: skills vs the published SDK
     runs-on: ubuntu-latest
+    # F-arch-4 (/review of B-004): the package list appeared three times, and the acceptance
+    # criteria greped only the install lines. A drifted copy in the reporting step would print
+    # `7/7` while five were installed — a gate claiming coverage it does not have, which is the
+    # invariant `agents/theokit-skills.md` § 4 forbids and which this job exists to enforce.
+    # One definition, referenced by both the install and the report.
+    env:
+      TAUGHT_PACKAGES: >-
+        @theokit/sdk@latest @theokit/di@latest @theokit/di-agent@latest @theokit/sdk-tools@latest @theokit/gateway-discord@latest @theokit/gateway-slack@latest @theokit/gateway-telegram@latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -44,10 +52,22 @@ jobs:
           # Installing @latest at runtime IS the check: this job asks whether the skills still
           # resolve against whatever the SDK publishes today. A lockfile would pin the very thing
           # being tested, and the job would pass forever while the skills drifted.
-          npm install --no-save @theokit/sdk@latest @theokit/di@latest @theokit/di-agent@latest @theokit/sdk-tools@latest @theokit/gateway-discord@latest @theokit/gateway-slack@latest @theokit/gateway-telegram@latest typescript # zizmor: ignore[adhoc-packages]
+          # shellcheck disable=SC2086  # word splitting is intended: TAUGHT_PACKAGES is a package list
+          npm install --no-save $TAUGHT_PACKAGES typescript # zizmor: ignore[adhoc-packages]
           echo "sdk=$(node -p "require('./node_modules/@theokit/sdk/package.json').version")" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve every symbol the skills teach
+        id: check
+        run: npm test
+
       - name: Report taught-surface-coverage
+        # F-arch-2 (/review of B-004): this step used to sit BEFORE `check`. A crash in the node
+        # script failed the job, and the issue step never fired — its `if` reads
+        # `steps.check.outcome == 'failure'`, which is unset when `check` never ran. So a bug in
+        # the REPORT would have silenced the ALERT. ADR-2 says this step must not fail the job;
+        # `continue-on-error` plus `always()` is what makes that true rather than intended.
+        if: always()
+        continue-on-error: true
         # ADR-2 of records/plans/widen-drift-cron-plan.md. The gap this job had was invisible
         # because nothing reported it: six of seven taught packages came from the lockfile, at
         # versions that by construction cannot have moved. This prints what was reached, so the
@@ -69,14 +89,7 @@ jobs:
             if(missing.length) console.log(`  NOT at @latest: ${missing.join(", ")}`);
           '
         env:
-          INSTALLED: >-
-            @theokit/sdk@latest @theokit/di@latest @theokit/di-agent@latest
-            @theokit/sdk-tools@latest @theokit/gateway-discord@latest
-            @theokit/gateway-slack@latest @theokit/gateway-telegram@latest
-
-      - name: Resolve every symbol the skills teach
-        id: check
-        run: npm test
+          INSTALLED: ${{ env.TAUGHT_PACKAGES }}
 
       - name: Open an issue when a skill teaches an API the package no longer has
         if: failure() && steps.check.outcome == 'failure'
@@ -108,12 +121,12 @@ jobs:
           Reproduce locally:
 
           ```bash
-          npm install --no-save @theokit/sdk@latest @theokit/di@latest @theokit/di-agent@latest @theokit/sdk-tools@latest @theokit/gateway-discord@latest @theokit/gateway-slack@latest @theokit/gateway-telegram@latest typescript
+          npm install --no-save __PKGS__ typescript
           npm test
           ```
 
           Workflow run: __RUN_URL__
           BODY
-          sed -e "s|__SDK__|${SDK}|g" -e "s|__RUN_URL__|${RUN_URL}|g" issue-body.template \
+          sed -e "s|__SDK__|${SDK}|g" -e "s|__RUN_URL__|${RUN_URL}|g" -e "s|__PKGS__|${TAUGHT_PACKAGES}|g" issue-body.template \
             | sed 's/^          //' > issue-body.md
           gh issue create --title "$title" --body-file issue-body.md
