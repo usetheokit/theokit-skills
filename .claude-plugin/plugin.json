@@ -1,6 +1,6 @@
 {
   "name": "theokit-sdk",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "Agent skills for the TheoKit ecosystem, installed into every AI coding tool you use. Teaches the @theokit/sdk surface (Agent.create/prompt, Tool.create with Zod, streaming SDKMessage events, MCP, subagents, cron, memory, disposal, the TheokitAgentError hierarchy) so your assistant writes correct SDK code. Verified against the shipped type declarations.",
   "author": {
     "name": "usetheo",

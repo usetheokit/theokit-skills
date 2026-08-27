@@ -27,6 +27,20 @@ jobs:
   drift:
     name: skills vs the published SDK
     runs-on: ubuntu-latest
+    # F-arch-4 (/review of B-004): the package list appeared three times, and the acceptance
+    # criteria greped only the install lines. A drifted copy in the reporting step would print
+    # `7/7` while five were installed — a gate claiming coverage it does not have, which is the
+    # invariant `agents/theokit-skills.md` § 4 forbids and which this job exists to enforce.
+    # One definition, referenced by both the install and the report.
+    env:
+      #
+      # NAMES, not `name@latest`. The install step below resolves each one to a concrete version at
+      # run time and installs that. The job still tests what is published TODAY — resolution happens
+      # against the live registry on every run — but the install line carries no mutable tag, so the
+      # exact versions are printed, land in the drift issue, and can be re-installed to reproduce a
+      # failure. Today's issue says "the SDK moved" without saying what it moved to.
+      TAUGHT_PACKAGES: >-
+        @theokit/sdk @theokit/di @theokit/di-agent @theokit/sdk-tools @theokit/gateway-discord @theokit/gateway-slack @theokit/gateway-telegram
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -41,27 +55,114 @@ jobs:
         id: install
         run: |
           set -euo pipefail
-          # Installing @latest at runtime IS the check: this job asks whether the skills still
-          # resolve against whatever the SDK publishes today. A lockfile would pin the very thing
-          # being tested, and the job would pass forever while the skills drifted.
-          npm install --no-save @theokit/sdk@latest typescript # zizmor: ignore[adhoc-packages]
+          # Resolving against the live registry at run time IS the check: this job asks whether the
+          # skills still resolve against what the packages publish TODAY. Committing a lockfile
+          # would pin the very thing being tested, and the job would pass forever while the skills
+          # drifted.
+          #
+          # What IS pinned is the install: each name is resolved to a concrete version first, and
+          # those versions are installed, printed, and carried into the drift issue. Resolution
+          # stays live; the install stops being a mutable tag, so a failure can be reproduced by
+          # re-installing exactly what this run had. (SonarQube githubactions:S8543.)
+          #
+          # shellcheck disable=SC2086  # word splitting is intended: TAUGHT_PACKAGES is a name list
+          RESOLVED=""
+          for pkg in $TAUGHT_PACKAGES; do
+            RESOLVED="$RESOLVED $pkg@$(npm view "$pkg" version)"
+          done
+          # typescript is the COMPILER, not a package under test, and it is the one thing here that
+          # must NOT float. Pinning it to `npm view typescript version` broke this job on the first
+          # run that tried it: that resolves to 7.x — the native port, whose JS API no longer has
+          # `ts.ScriptTarget` — and `tests/api-resolves.test.mjs` drives `ts.createProgram` directly.
+          # It comes from the lockfile, which is where the version this suite is written against
+          # already lives.
+          RESOLVED="$RESOLVED typescript@$(node -p "require('./package-lock.json').packages['node_modules/typescript'].version")"
+          echo "resolved:$RESOLVED"
+
+          # --ignore-scripts: this job installs seven packages into a runner that holds
+          # `issues: write`. A lifecycle script in any of them — or in anything they pull — would
+          # run with that token. Measured before adding it: zero packages in the resolved tree
+          # declare preinstall/install/postinstall, so it costs nothing here.
+          # (SonarQube githubactions:S6505.)
+          #
+          # shellcheck disable=SC2086  # word splitting is intended: RESOLVED is a package list
+          npm install --no-save --ignore-scripts $RESOLVED # zizmor: ignore[adhoc-packages]
           echo "sdk=$(node -p "require('./node_modules/@theokit/sdk/package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "resolved=$RESOLVED" >> "$GITHUB_OUTPUT"
 
       - name: Resolve every symbol the skills teach
         id: check
         run: npm test
+
+      - name: Report taught-surface-coverage
+        # F-arch-2 (/review of B-004): this step used to sit BEFORE `check`. A crash in the node
+        # script failed the job, and the issue step never fired — its `if` reads
+        # `steps.check.outcome == 'failure'`, which is unset when `check` never ran. So a bug in
+        # the REPORT would have silenced the ALERT. ADR-2 says this step must not fail the job;
+        # `continue-on-error` plus `always()` is what makes that true rather than intended.
+        #
+        # F-tw-1 (/review of B-004): the first version compared the taught set against the
+        # INSTALLED env STRING, so it reported what the workflow DECLARED rather than what the
+        # install achieved. Proved by the reviewer: adding `@theokit/does-not-exist@latest` to that
+        # string still printed 7/7. That is a gate claiming coverage it does not have — the exact
+        # invariant `agents/theokit-skills.md` § 4 forbids and this job exists to enforce.
+        #
+        # F-tw-10: and because `always()` now runs it after a failed install, the declared version
+        # would have printed 7/7 over an empty node_modules.
+        #
+        # It reads `node_modules` instead. The number is observed, and a failed install shows as a
+        # low count rather than a confident one.
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2016  # F-dom-1: the `${…}` below are JS template literals inside a
+          # single-quoted `node -e` argument, not shell expansions. shellcheck cannot tell the two
+          # apart, and actionlint exits 1 on ANY shellcheck output regardless of its severity — so
+          # an `info` finding turns `workflow-lint.yml` red. That lint is the safety net this file's
+          # own plan named, and tripping it would have been the change breaking its own guard.
+          node -e '
+            const fs=require("fs"),path=require("path");
+            const taught=new Set();
+            for(const d of fs.readdirSync("skills")){
+              const f=path.join("skills",d,"SKILL.md"); if(!fs.existsSync(f))continue;
+              for(const m of fs.readFileSync(f,"utf8").matchAll(/from\s*["\x27](@theokit\/[^"\x27]+)["\x27]/g))
+                taught.add(m[1].split("/").slice(0,2).join("/"));
+            }
+            const onDisk=new Map();
+            for(const name of [...taught]){
+              const mf=path.join("node_modules",...name.split("/"),"package.json");
+              if(fs.existsSync(mf)) onDisk.set(name, JSON.parse(fs.readFileSync(mf,"utf8")).version);
+            }
+            const missing=[...taught].filter(p=>!onDisk.has(p)).sort();
+            console.log(`taught-surface-coverage: ${onDisk.size}/${taught.size} taught packages present in node_modules`);
+            for(const [n,v] of [...onDisk].sort()) console.log(`  ${n}@${v}`);
+            if(missing.length) console.log(`  MISSING from node_modules: ${missing.join(", ")}`);
+          '
 
       - name: Open an issue when a skill teaches an API the package no longer has
         if: failure() && steps.check.outcome == 'failure'
         env:
           GH_TOKEN: ${{ github.token }}
           SDK: ${{ steps.install.outputs.sdk }}
+          # The resolved versions, so the reproduce command in the issue re-installs exactly what
+          # this run installed rather than whatever is newest when someone reads it.
+          PKGS: ${{ steps.install.outputs.resolved }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          title="skills drifted from @theokit/sdk@${SDK}"
+          # F-dom-7 (/review of B-004): the title used to hardcode `@theokit/sdk@${SDK}`, so drift
+          # in a gateway adapter filed an issue naming the SDK and stamping the SDK's version. It
+          # is also the DEDUP KEY, so a gateway drifting while an SDK-titled issue was open would
+          # have been swallowed by the search below — the alert lost, not merely mislabelled.
+          #
+          # The title now names the run's date instead of one package. Which package drifted is in
+          # the body, where the compiler output says it, rather than guessed by a workflow that
+          # cannot know before `npm test` runs.
+          title="skills drifted from a published @theokit package ($(date -u +%F))"
           # One open issue at a time: a daily job that files a duplicate every morning trains people
-          # to close them unread, which is worse than not filing at all.
+          # to close them unread, which is worse than not filing at all. Dedup is now per-day, so a
+          # second package drifting on the same day joins the same issue rather than vanishing.
           open_count="$(gh issue list --state open --search "$title in:title" --json number --jq 'length')"
           if [ "$open_count" != "0" ]; then
             echo "an open issue already tracks this"
@@ -72,7 +173,10 @@ jobs:
           # also stops the shell expanding anything in the body, so the two values are substituted
           # explicitly below and nothing else can be.
           cat > issue-body.template <<'BODY'
-          The scheduled drift check failed against `@theokit/sdk@__SDK__`.
+          The scheduled drift check failed. It installs every `@theokit` package the skills teach at
+          `@latest`, so the drift may be in ANY of them — read the compiler output in the run log
+          for the package and symbol. `@theokit/sdk` resolved to `__SDK__` on this run; the
+          `taught-surface-coverage` step lists every package with the version it resolved to.
 
           A skill here teaches a symbol or subpath the published SDK does not export. That is not a
           stale doc: an agent follows it and writes code that does not compile, with the confidence
@@ -81,12 +185,12 @@ jobs:
           Reproduce locally:
 
           ```bash
-          npm install --no-save @theokit/sdk@latest typescript
+          npm install --no-save --ignore-scripts __PKGS__
           npm test
           ```
 
           Workflow run: __RUN_URL__
           BODY
-          sed -e "s|__SDK__|${SDK}|g" -e "s|__RUN_URL__|${RUN_URL}|g" issue-body.template \
+          sed -e "s|__SDK__|${SDK}|g" -e "s|__RUN_URL__|${RUN_URL}|g" -e "s|__PKGS__|${PKGS}|g" issue-body.template \
             | sed 's/^          //' > issue-body.md
           gh issue create --title "$title" --body-file issue-body.md
