@@ -21,6 +21,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   `overrides` entry moves it to a patched release: `npm audit` reports zero at every severity.
   Dev tree only — `dependencies` stays empty and nothing here reaches a consumer. (B-007)
 
+- The test written to prevent the two gates diverging could not detect the divergence. It compared
+  `specifiersIn` against `importsIn`, and the first is implemented by calling the second — a wrapper
+  against its own delegate, agreeing by construction. Replaced by a structural guard that reads every
+  test file and fails when one parses imports itself; demonstrated failing against the exact
+  divergence it exists to catch. (B-008)
+
 - The two drift gates disagreed about what counts as a taught import: `no-blind-specifier` carried
   a copy of `api-resolves`'s extractor without its deprecated-fence exclusion, so an import inside
   a `Before:` or `Don't:` block counted for one gate and not the other. Latent — no skill teaches

@@ -28,14 +28,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-import { skillNames } from "./_skills.mjs";
+import { skillFiles, skillNames } from "./_skills.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const skillsDir = join(root, "skills");
-
-function skillFiles() {
-  return skillNames().map((n) => join(skillsDir, n, "SKILL.md"));
-}
 
 /** The YAML frontmatter block of a skill, as raw text. `undefined` when absent. */
 function frontmatter(file) {

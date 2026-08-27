@@ -15,9 +15,14 @@
  * Run: `npm test` (node --test).
  */
 import assert from "node:assert/strict";
+import { readFileSync, readdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 import { importsIn, specifiersIn } from "./_skills.mjs";
+
+const testsDir = dirname(fileURLToPath(import.meta.url));
 
 const DEPRECATED = [
   "Don't:",
@@ -43,6 +48,31 @@ test("an import outside a deprecated fence IS a taught import", () => {
   // measuring nothing — the shape `api-resolves.test.mjs:20-22` records having been bitten by.
   const text = 'Use this:\n\n```typescript\nimport { X } from "@theokit/sdk";\n```\n';
   assert.deepEqual([...specifiersIn(text)], ["@theokit/sdk"]);
+});
+
+test("no test file carries its own import extractor", () => {
+  // F-ta-1 (/review of B-008): the test below compares `specifiersIn` against `importsIn`, and
+  // `_skills.mjs:84` implements the first by CALLING the second. It compares a wrapper with its own
+  // delegate, so it agrees by construction. The reviewer proved it: re-introducing B-005's exact
+  // divergence in a scratch worktree left the suite 47/47 green.
+  //
+  // This is the guard that can actually fail. The divergence B-008 closes was a SECOND extractor,
+  // so what has to be asserted is that no second one exists — a structural property, checkable by
+  // reading the files rather than by comparing two functions that share an implementation.
+  const OWN_EXTRACTOR = /matchAll\(\s*\/(?:[^/\\]|\\.)*import|from\\s\*\[/;
+  const offenders = [];
+  for (const file of readdirSync(testsDir)) {
+    if (!file.endsWith(".test.mjs")) continue;
+    const text = readFileSync(join(testsDir, file), "utf8");
+    // The agreement test itself names the pattern in prose and in this regex; skip only itself.
+    if (file === "extractor-agreement.test.mjs") continue;
+    if (OWN_EXTRACTOR.test(text)) offenders.push(file);
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `these test files parse imports themselves instead of using _skills.mjs: ${offenders.join(", ")}`,
+  );
 });
 
 test("both extractors read the same taught imports from the same text", () => {
