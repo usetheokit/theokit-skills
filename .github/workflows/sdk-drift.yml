@@ -1,0 +1,92 @@
+name: sdk-drift
+
+# THE COUPLING THESE SKILLS LOST, REBUILT AS A SCHEDULE.
+#
+# They used to be authored inside `@theokit/sdk`, so a pull request removing an export touched them
+# in the same diff and that repo's gate fired. They live here now and that is gone: the SDK can
+# delete a symbol tomorrow and nothing in this repository would notice until a user followed a skill
+# that lies.
+#
+# So the check runs on a clock against whatever `@theokit/sdk` is CURRENTLY published — not the
+# version in the lockfile, which is exactly the version that cannot tell you anything new. A failure
+# here means the published API moved out from under a skill, and it opens an issue rather than
+# turning a Slack notification nobody reads into the whole alerting story.
+
+on:
+  schedule:
+    # 06:00 UTC daily. A published API change is worth catching in a day; a week is long enough for
+    # someone to have followed the stale instruction and filed a bug against the wrong thing.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  drift:
+    name: skills vs the published SDK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # This job never pushes, and the issue it opens authenticates through GH_TOKEN.
+          # Leaving the checkout credential in `.git/config` would be a token nothing needs.
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      - name: Install against the latest published @theokit/sdk # zizmor: ignore[adhoc-packages]
+        id: install
+        run: |
+          set -euo pipefail
+          # Installing @latest at runtime IS the check: this job asks whether the skills still
+          # resolve against whatever the SDK publishes today. A lockfile would pin the very thing
+          # being tested, and the job would pass forever while the skills drifted.
+          npm install --no-save @theokit/sdk@latest typescript # zizmor: ignore[adhoc-packages]
+          echo "sdk=$(node -p "require('./node_modules/@theokit/sdk/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve every symbol the skills teach
+        id: check
+        run: npm test
+
+      - name: Open an issue when a skill teaches an API the package no longer has
+        if: failure() && steps.check.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SDK: ${{ steps.install.outputs.sdk }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="skills drifted from @theokit/sdk@${SDK}"
+          # One open issue at a time: a daily job that files a duplicate every morning trains people
+          # to close them unread, which is worse than not filing at all.
+          open_count="$(gh issue list --state open --search "$title in:title" --json number --jq 'length')"
+          if [ "$open_count" != "0" ]; then
+            echo "an open issue already tracks this"
+            exit 0
+          fi
+          # A quoted heredoc, not a printf chain: the body contains backticks, and shellcheck reads
+          # a backtick inside single quotes as command substitution (SC2016). Quoting the delimiter
+          # also stops the shell expanding anything in the body, so the two values are substituted
+          # explicitly below and nothing else can be.
+          cat > issue-body.template <<'BODY'
+          The scheduled drift check failed against `@theokit/sdk@__SDK__`.
+
+          A skill here teaches a symbol or subpath the published SDK does not export. That is not a
+          stale doc: an agent follows it and writes code that does not compile, with the confidence
+          of something it was told.
+
+          Reproduce locally:
+
+          ```bash
+          npm install --no-save @theokit/sdk@latest typescript
+          npm test
+          ```
+
+          Workflow run: __RUN_URL__
+          BODY
+          sed -e "s|__SDK__|${SDK}|g" -e "s|__RUN_URL__|${RUN_URL}|g" issue-body.template \
+            | sed 's/^          //' > issue-body.md
+          gh issue create --title "$title" --body-file issue-body.md

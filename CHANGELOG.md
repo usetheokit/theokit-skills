@@ -4,6 +4,53 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Added
+
+- A resolution gate: every `import` in every skill is compiled against the installed `@theokit/sdk`, so a symbol that never existed — or one imported from a subpath that does not export it — fails CI. The sibling drift gate matches names it was told about; this one asks the compiler. Specifiers it cannot check (`@theokit/di`, `@theokit/di-agent`, the gateway packages, which are not installed here) are named on every run rather than silently skipped.
+
+### Fixed
+
+- The manifest no longer claims this package is built with pnpm. `packageManager` named pnpm and
+  `engines` required `pnpm >= 10.34.1`, while the repository ships a `package-lock.json`, has no
+  pnpm lockfile, and installs with `npm` in every CI job — so a contributor who trusted the field
+  and ran `pnpm install` got a working install and a **second lockfile**, after which the two
+  disagreed about the tree and only one of them was under test.
+
+  `engines.pnpm` is the half that would have reached consumers: it is published metadata, and pnpm
+  validates it. A user running `pnpm dlx @theokit/skills` on pnpm 9 would have been told this CLI
+  needs a package manager it does not use. It never shipped — 0.4.1 is the published version and
+  carries no `engines` at all — so this corrects it before anyone could hit it.
+
+  `engines.node` and `.nvmrc` stay. Pinning Node was the useful half of that change; pinning a
+  package manager the repository does not use was not. (#5)
+
+## [0.4.2] - 2026-08-20
+
+### Fixed
+
+- `theokit-workflows` taught `import { Workflow, fn, agentStep } from "@theokit/sdk"`. The published SDK exports those from `@theokit/sdk/workflow`, not the root, so an agent following the skill wrote an import that does not compile. Found by the new resolution gate on its first run, which is the argument for the gate.
+
+### Added
+
+- A gate that RESOLVES every `@theokit` symbol the skills teach against the installed SDK, rather than matching known-bad names. The sibling pattern gate knows the twelve factories removed at v3.0 and cannot know the thirteenth; this one asks the compiler the same question a reader's editor asks. `typescript` and `@theokit/sdk` are devDependencies, which never reach a consumer, so `npx @theokit/skills` is unaffected.
+- A scheduled workflow that runs that gate against whatever `@theokit/sdk` is CURRENTLY published and opens one issue when it fails. These skills used to live inside the SDK, so a pull request removing an export touched them in the same diff; that coupling is gone, and this is what replaces it. Measured at the move: the SDK's own drift gate went from 112 verified imports to 43, and the 69 that left were these.
+
+### Added
+
+- `Workflow Lint`, a CI gate running actionlint and zizmor over `.github/workflows/` (#4)
+- `engines`, `packageManager` and `.nvmrc`, so CI and a contributor resolve the same Node and
+  pnpm instead of each taking whatever they find (#4)
+
+### Security
+
+- The publish step no longer sets `NODE_AUTH_TOKEN`. It was a bootstrap crutch kept after the
+  bootstrap, and the npm CLI prefers token auth over OIDC — so re-adding the secret for any reason
+  would have silently dropped the trusted-publisher binding and the provenance attestation with
+  it, with no error (#4)
+- Every GitHub Action is pinned to a commit SHA rather than a movable tag, and the npm that
+  performs the publish is pinned to an exact version rather than `@latest` (#4)
+- Checkouts no longer leave the job token in `.git/config`; nothing here pushes with git (#4)
+
 ## [0.4.1] - 2026-08-20
 
 ### Changed
