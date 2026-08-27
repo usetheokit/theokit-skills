@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Added
 
+- The drift gate now resolves the five `@theokit` specifiers it used to report as
+  `not checked (not installed here)`. `@theokit/di`, `@theokit/di-agent` and the Discord, Slack and
+  Telegram gateway adapters are installed as devDependencies, so the 33 symbols four skills teach
+  from them are compiled against the published declarations instead of being named as unverified.
+  Measured: **68 imports resolved before, 103 after**. A new assertion turns the old stdout report
+  into a gate that can fail — it carries the same anti-vacuity guard as its sibling, so a broken
+  extractor goes red instead of green. `dependencies` stays empty; `npx @theokit/skills` is
+  unaffected. (B-005)
+
 - A resolution gate: every `import` in every skill is compiled against the installed `@theokit/sdk`, so a symbol that never existed — or one imported from a subpath that does not export it — fails CI. The sibling drift gate matches names it was told about; this one asks the compiler. Specifiers it cannot check (`@theokit/di`, `@theokit/di-agent`, the gateway packages, which are not installed here) are named on every run rather than silently skipped.
 
 ### Fixed
