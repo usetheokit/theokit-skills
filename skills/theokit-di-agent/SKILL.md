@@ -43,6 +43,10 @@ const { agent, dispose } = await createAgentProvider(container, {
 
 Registers a method as a custom tool exposed to the LLM.
 
+> **Zod version.** `@theokit/sdk` depends on `zod@^4`. Installing `zod@3` alongside it puts two
+> copies in the tree and a v3 schema is not accepted by a v4 API — the failure is a type error at
+> the call site, not a version message. Install `zod@^4` explicitly if you add it yourself.
+
 ```typescript
 import { Injectable } from "@theokit/di";
 import { Tool } from "@theokit/di-agent";

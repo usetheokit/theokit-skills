@@ -158,6 +158,10 @@ const agent = await Agent.builder()
 
 ## Agent.generateObject / Agent.streamObject
 
+> **Zod version.** `@theokit/sdk` depends on `zod@^4`. Installing `zod@3` alongside it puts two
+> copies in the tree and a v3 schema is not accepted by a v4 API — the failure is a type error at
+> the call site, not a version message. Install `zod@^4` explicitly if you add it yourself.
+
 ```typescript
 import { z } from "zod";
 
@@ -177,11 +181,17 @@ for await (const evt of Agent.streamObject({ schema, prompt, model, local })) {
 ## Disposal patterns
 
 ```typescript
-// Preferred: await using (auto-dispose on block exit)
-await using agent = await Agent.create({ /* ... */ });
+// Portable: works on every runtime this package supports (engines.node >=22.12.0)
+const agent = await Agent.create({ /* ... */ });
+try {
+  // ...
+} finally {
+  await agent[Symbol.asyncDispose]();
+}
 
-// Explicit dispose
-await agent[Symbol.asyncDispose]();
+// Shorter, but needs Node 24 or a downlevelling build step: `await using` is
+// explicit resource management, which does not exist in Node 22.
+await using agent = await Agent.create({ /* ... */ });
 
 // Fire-and-forget close
 agent.close();

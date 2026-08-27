@@ -53,6 +53,10 @@ const { value, changed, notes } = sanitizeToolInput({ query: "  hello  " });
 
 Pass the tool's Zod object schema so a `z.string()` field keeps `"5"` as a string while a `z.number()` field coerces it. Never throws, so it is safe to run before `schema.parse`.
 
+> **Zod version.** `@theokit/sdk` depends on `zod@^4`. Installing `zod@3` alongside it puts two
+> copies in the tree and a v3 schema is not accepted by a v4 API — the failure is a type error at
+> the call site, not a version message. Install `zod@^4` explicitly if you add it yourself.
+
 ```typescript
 import { z } from "zod";
 

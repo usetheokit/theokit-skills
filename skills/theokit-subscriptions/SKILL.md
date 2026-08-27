@@ -16,6 +16,10 @@ via the `@theokit/sdk/subscription` sub-path import (not on the main barrel).
 
 ## Server side — `Subscription.create`
 
+> **Zod version.** `@theokit/sdk` depends on `zod@^4`. Installing `zod@3` alongside it puts two
+> copies in the tree and a v3 schema is not accepted by a v4 API — the failure is a type error at
+> the call site, not a version message. Install `zod@^4` explicitly if you add it yourself.
+
 ```typescript
 import { Subscription } from "@theokit/sdk/subscription";
 import { z } from "zod";

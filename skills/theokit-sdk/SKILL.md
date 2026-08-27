@@ -79,6 +79,10 @@ Per-send options include `model` (sticky override), `mcpServers` (replaces creat
 
 The canonical factory is `Tool.create` (the uniform `X.create()` API since v3.0). There is **no** `defineTool` export.
 
+> **Zod version.** `@theokit/sdk` depends on `zod@^4`. Installing `zod@3` alongside it puts two
+> copies in the tree and a v3 schema is not accepted by a v4 API — the failure is a type error at
+> the call site, not a version message. Install `zod@^4` explicitly if you add it yourself.
+
 ```typescript
 import { z } from "zod";
 import { Tool } from "@theokit/sdk";
@@ -180,14 +184,26 @@ Bind a job with `agent` (ephemeral per fire) OR `agentId` (bound), never both. 5
 
 ## Resource disposal
 
-Always dispose. Cleanest is `await using`:
+Always dispose. The portable form works on every supported runtime:
 
 ```typescript
-await using agent = await Agent.create({ /* ... */ });
-// disposed when the block exits
+const agent = await Agent.create({ /* ... */ });
+try {
+  // ...
+} finally {
+  await agent[Symbol.asyncDispose]();
+}
 ```
 
-Explicit: `await agent[Symbol.asyncDispose]()`. `agent.close()` starts disposal fire-and-forget. `agent.reload()` re-reads file-based config (hooks, project MCP, subagents) without disposing.
+`await using` is shorter and disposes at block exit, but it is **explicit resource management**,
+which needs Node 24 or a build step that downlevels it. This package declares
+`engines.node: ">=22.12.0"`, so an example using it fails on the lowest runtime the package claims
+to support:
+
+```typescript
+// Node 24+, or transpiled
+await using agent = await Agent.create({ /* ... */ });
+``` `agent.close()` starts disposal fire-and-forget. `agent.reload()` re-reads file-based config (hooks, project MCP, subagents) without disposing.
 
 ## Anti-patterns
 
