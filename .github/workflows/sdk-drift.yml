@@ -53,7 +53,12 @@ jobs:
           # resolve against whatever the SDK publishes today. A lockfile would pin the very thing
           # being tested, and the job would pass forever while the skills drifted.
           # shellcheck disable=SC2086  # word splitting is intended: TAUGHT_PACKAGES is a package list
-          npm install --no-save $TAUGHT_PACKAGES typescript # zizmor: ignore[adhoc-packages]
+          # --ignore-scripts: this job installs seven packages at @latest into a runner that
+          # holds `issues: write`. A lifecycle script in any of them — or in anything they
+          # pull — would run with that token. Measured before adding it: zero packages in the
+          # resolved tree declare preinstall/install/postinstall, so it costs nothing here.
+          # (SonarQube githubactions:S6505.)
+          npm install --no-save --ignore-scripts $TAUGHT_PACKAGES typescript # zizmor: ignore[adhoc-packages]
           echo "sdk=$(node -p "require('./node_modules/@theokit/sdk/package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Resolve every symbol the skills teach

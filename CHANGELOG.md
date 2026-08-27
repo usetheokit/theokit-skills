@@ -97,6 +97,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   `engines.node` and `.nvmrc` stay. Pinning Node was the useful half of that change; pinning a
   package manager the repository does not use was not. (#5)
 
+### Security
+
+- The nightly drift job installs its seven packages with `--ignore-scripts`. It resolves them at
+  `@latest` into a runner holding `issues: write`, so a lifecycle script in any of them — or in
+  anything they pull — would have run with that token. Measured before the change: zero packages in
+  the resolved tree declare `preinstall`/`install`/`postinstall`, so the flag closes the path
+  without costing anything. Found by SonarQube (`githubactions:S6505`) on the release PR, in the
+  install line this release had just widened from one package to seven. The companion finding
+  (`S8543`, unlocked versions) is excluded for that one file with the reason recorded in
+  `sonar-project.properties`: pinning would pin the very thing the job tests.
+
+
 ## [0.4.2] - 2026-08-20
 
 ### Fixed
