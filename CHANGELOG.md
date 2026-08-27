@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Added
 
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [0.5.0] - 2026-08-27
+
+### Added
+
 - Mutation testing, configured against the existing `node --test` suite. The first run measured
   **456 mutants and a score of 58.8%** (268 killed, 188 survived) over `lib/` and `bin/`. That is
   below the 60% floor, so the quality gate stays capped — by a measurement now, rather than by the
@@ -13,6 +27,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   a ritual. Read the score with its shape: a third of the survivors are string literals in report
   output, which no test asserts on deliberately, so 58.8% under-reports the real protection.
   `lib/manifest.mjs` survives only 13% of its mutants; `bin/install.mjs` survives 48%. (B-007)
+
+- The nightly drift job now installs **every** `@theokit` package the skills import at `@latest`,
+  not only `@theokit/sdk`. Measured before the change: the skills teach **175 symbols across seven
+  packages**, and the job reached 137 of them (78%) at a currently published version — the other 38
+  arrived from the lockfile, at versions that by construction cannot have moved. A removed export
+  in a gateway adapter or in `@theokit/di` produced no signal here. The job also prints its own
+  coverage now (`taught-surface-coverage: 7/7`), so the same gap cannot return silently when a
+  package is added to a skill and not to the install line. (B-004)
+
+- The drift gate now resolves the five `@theokit` specifiers it used to report as
+  `not checked (not installed here)`. `@theokit/di`, `@theokit/di-agent` and the Discord, Slack and
+  Telegram gateway adapters are installed as devDependencies, so the 33 symbols four skills teach
+  from them are compiled against the published declarations instead of being named as unverified.
+  Measured: **68 imports resolved before, 103 after**. A new assertion turns the old stdout report
+  into a gate that can fail — it carries the same anti-vacuity guard as its sibling, so a broken
+  extractor goes red instead of green. `dependencies` stays empty; `npx @theokit/skills` is
+  unaffected. (B-005)
+
+- A resolution gate: every `import` in every skill is compiled against the installed `@theokit/sdk`, so a symbol that never existed — or one imported from a subpath that does not export it — fails CI. The sibling drift gate matches names it was told about; this one asks the compiler. Specifiers it cannot check (`@theokit/di`, `@theokit/di-agent`, the gateway packages, which are not installed here) are named on every run rather than silently skipped.
+
+
+### Changed
+
+- The code-quality allowlist carries one entry, sunset `2026-11-25`, downgrading the
+  `mutation_unconfigured` soft cap by a single level. Required by
+  `code-quality-golden-rule.md § 4`, and recorded because it is not a decision that mutation
+  testing is unnecessary: without it, no plan in this repository could pass the `/implement` gate,
+  including the plan that would configure the mutation runner. Owned by B-007; remove the entry
+  when that lands.
+
 
 ### Fixed
 
@@ -38,38 +82,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   emoji inside a group followed by `\b`, and a word boundary after a non-word character does not
   match what follows — so an example marked with the emoji was treated as a real import by BOTH
   gates. Found by the new agreement test, not by a reader. (B-008)
-
-### Added
-
-- The nightly drift job now installs **every** `@theokit` package the skills import at `@latest`,
-  not only `@theokit/sdk`. Measured before the change: the skills teach **175 symbols across seven
-  packages**, and the job reached 137 of them (78%) at a currently published version — the other 38
-  arrived from the lockfile, at versions that by construction cannot have moved. A removed export
-  in a gateway adapter or in `@theokit/di` produced no signal here. The job also prints its own
-  coverage now (`taught-surface-coverage: 7/7`), so the same gap cannot return silently when a
-  package is added to a skill and not to the install line. (B-004)
-
-- The drift gate now resolves the five `@theokit` specifiers it used to report as
-  `not checked (not installed here)`. `@theokit/di`, `@theokit/di-agent` and the Discord, Slack and
-  Telegram gateway adapters are installed as devDependencies, so the 33 symbols four skills teach
-  from them are compiled against the published declarations instead of being named as unverified.
-  Measured: **68 imports resolved before, 103 after**. A new assertion turns the old stdout report
-  into a gate that can fail — it carries the same anti-vacuity guard as its sibling, so a broken
-  extractor goes red instead of green. `dependencies` stays empty; `npx @theokit/skills` is
-  unaffected. (B-005)
-
-- A resolution gate: every `import` in every skill is compiled against the installed `@theokit/sdk`, so a symbol that never existed — or one imported from a subpath that does not export it — fails CI. The sibling drift gate matches names it was told about; this one asks the compiler. Specifiers it cannot check (`@theokit/di`, `@theokit/di-agent`, the gateway packages, which are not installed here) are named on every run rather than silently skipped.
-
-### Changed
-
-- The code-quality allowlist carries one entry, sunset `2026-11-25`, downgrading the
-  `mutation_unconfigured` soft cap by a single level. Required by
-  `code-quality-golden-rule.md § 4`, and recorded because it is not a decision that mutation
-  testing is unnecessary: without it, no plan in this repository could pass the `/implement` gate,
-  including the plan that would configure the mutation runner. Owned by B-007; remove the entry
-  when that lands.
-
-### Fixed
 
 - The manifest no longer claims this package is built with pnpm. `packageManager` named pnpm and
   `engines` required `pnpm >= 10.34.1`, while the repository ships a `package-lock.json`, has no
