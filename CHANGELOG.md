@@ -17,6 +17,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 - A resolution gate: every `import` in every skill is compiled against the installed `@theokit/sdk`, so a symbol that never existed — or one imported from a subpath that does not export it — fails CI. The sibling drift gate matches names it was told about; this one asks the compiler. Specifiers it cannot check (`@theokit/di`, `@theokit/di-agent`, the gateway packages, which are not installed here) are named on every run rather than silently skipped.
 
+### Changed
+
+- The code-quality allowlist carries one entry, sunset `2026-11-25`, downgrading the
+  `mutation_unconfigured` soft cap by a single level. Required by
+  `code-quality-golden-rule.md § 4`, and recorded because it is not a decision that mutation
+  testing is unnecessary: without it, no plan in this repository could pass the `/implement` gate,
+  including the plan that would configure the mutation runner. Owned by B-007; remove the entry
+  when that lands.
+
 ### Fixed
 
 - The manifest no longer claims this package is built with pnpm. `packageManager` named pnpm and
