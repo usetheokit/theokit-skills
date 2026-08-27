@@ -114,9 +114,18 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          title="skills drifted from @theokit/sdk@${SDK}"
+          # F-dom-7 (/review of B-004): the title used to hardcode `@theokit/sdk@${SDK}`, so drift
+          # in a gateway adapter filed an issue naming the SDK and stamping the SDK's version. It
+          # is also the DEDUP KEY, so a gateway drifting while an SDK-titled issue was open would
+          # have been swallowed by the search below — the alert lost, not merely mislabelled.
+          #
+          # The title now names the run's date instead of one package. Which package drifted is in
+          # the body, where the compiler output says it, rather than guessed by a workflow that
+          # cannot know before `npm test` runs.
+          title="skills drifted from a published @theokit package ($(date -u +%F))"
           # One open issue at a time: a daily job that files a duplicate every morning trains people
-          # to close them unread, which is worse than not filing at all.
+          # to close them unread, which is worse than not filing at all. Dedup is now per-day, so a
+          # second package drifting on the same day joins the same issue rather than vanishing.
           open_count="$(gh issue list --state open --search "$title in:title" --json number --jq 'length')"
           if [ "$open_count" != "0" ]; then
             echo "an open issue already tracks this"
@@ -127,7 +136,10 @@ jobs:
           # also stops the shell expanding anything in the body, so the two values are substituted
           # explicitly below and nothing else can be.
           cat > issue-body.template <<'BODY'
-          The scheduled drift check failed against `@theokit/sdk@__SDK__`.
+          The scheduled drift check failed. It installs every `@theokit` package the skills teach at
+          `@latest`, so the drift may be in ANY of them — read the compiler output in the run log
+          for the package and symbol. `@theokit/sdk` resolved to `__SDK__` on this run; the
+          `taught-surface-coverage` step lists every package with the version it resolved to.
 
           A skill here teaches a symbol or subpath the published SDK does not export. That is not a
           stale doc: an agent follows it and writes code that does not compile, with the confidence
