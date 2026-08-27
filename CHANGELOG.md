@@ -4,6 +4,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Fixed
+
+- The two drift gates disagreed about what counts as a taught import: `no-blind-specifier` carried
+  a copy of `api-resolves`'s extractor without its deprecated-fence exclusion, so an import inside
+  a `Before:` or `Don't:` block counted for one gate and not the other. Latent — no skill teaches
+  by contrast with an uninstalled package today — and active the first time one does. There is now
+  one extractor in `tests/_skills.mjs`, with the exclusion as the default rather than the option,
+  and a test that fails when the two gates diverge. (B-008)
+
+- The deprecated-fence marker never matched `❌ Do not:`, despite listing `❌`. The pattern put the
+  emoji inside a group followed by `\b`, and a word boundary after a non-word character does not
+  match what follows — so an example marked with the emoji was treated as a real import by BOTH
+  gates. Found by the new agreement test, not by a reader. (B-008)
+
 ### Added
 
 - The nightly drift job now installs **every** `@theokit` package the skills import at `@latest`,

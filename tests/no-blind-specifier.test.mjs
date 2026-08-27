@@ -6,6 +6,9 @@
  * unable to fail on it. That report is a line of stdout: it goes amber forever and nothing turns
  * red. This test is the assertion behind it.
  *
+ * The extractor lives in `_skills.mjs` since B-008: this file used to carry its own copy without
+ * the deprecated-fence exclusion, and the two gates disagreed about what a taught import is.
+ *
  * WHY THE FIRST ASSERTION EXISTS. If `importsIn()` ever stops matching — a regex change, a
  * Markdown reformat, a renamed directory — it returns nothing, `unchecked` is empty, and asserting
  * only on `unchecked` would PASS while nothing was examined. A green suite would then mean "no
@@ -15,23 +18,14 @@
  * Run: `npm test` (node --test).
  */
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
+import { readSkill, skillFiles, specifiersIn } from "./_skills.mjs";
+
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const skillsDir = join(root, "skills");
-
-/** `import { a, b as c } from "x"` — value and type forms alike. Mirrors the sibling extractor. */
-function specifiersIn(text) {
-  const found = new Set();
-  for (const m of text.matchAll(/import\s*(?:type\s+)?\{[^}]*\}\s*from\s*["']([^"']+)["']/g)) {
-    if (m[1].startsWith("@theokit/")) found.add(m[1]);
-  }
-  return found;
-}
-
 /** A specifier is reachable when its package is installed AND declares the subpath in `exports`. */
 function isResolvable(specifier) {
   const [scope, name, ...rest] = specifier.split("/");
@@ -47,11 +41,8 @@ function isResolvable(specifier) {
 
 test("no @theokit specifier a skill imports is left unchecked by the drift gate", () => {
   const imported = new Set();
-  for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const file = join(skillsDir, entry.name, "SKILL.md");
-    if (!existsSync(file)) continue;
-    for (const s of specifiersIn(readFileSync(file, "utf8"))) imported.add(s);
+  for (const file of skillFiles()) {
+    for (const s of specifiersIn(readSkill(file))) imported.add(s);
   }
 
   assert.ok(

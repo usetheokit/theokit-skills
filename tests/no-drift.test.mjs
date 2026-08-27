@@ -23,21 +23,15 @@
  * Run: `npm test` (node --test, zero dependencies).
  */
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
+import { skillNames } from "./_skills.mjs";
+
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const skillsDir = join(root, "skills");
-
-/** Every skill directory in the package. */
-function skillNames() {
-  return readdirSync(skillsDir, { withFileTypes: true })
-    .filter((e) => e.isDirectory())
-    .map((e) => e.name)
-    .sort();
-}
 
 function skillFiles() {
   return skillNames().map((n) => join(skillsDir, n, "SKILL.md"));
