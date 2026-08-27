@@ -5,3 +5,6 @@ node_modules/
 
 # Kit de manutencao (Squad) instalado em .claude/ — nao versionado
 .claude/
+
+# Registro de manutencao pessoal (Squad) — nao e documentacao do projeto
+BACKLOG.md
