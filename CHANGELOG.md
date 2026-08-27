@@ -105,11 +105,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   the resolved tree declare `preinstall`/`install`/`postinstall`, so the flag closes the path
   without costing anything. Found by SonarQube (`githubactions:S6505`) on the release PR, in the
   install line this release had just widened from one package to seven. The companion finding
-  (`S8543`, unlocked versions) is reviewed and left open: pinning would pin the very thing the job
-  tests, and the rule's remedy does not apply to a job whose function is to resolve `@latest`. Two
-  attempts to record that exception in `sonar-project.properties` were pushed and measured, and
-  neither took effect — automatic analysis does not read issue-ignore properties — so the block was
-  removed rather than kept as a control that does nothing.
+  (`S8543`, unlocked versions) turned out to have a real remedy after all: the job now resolves each
+  taught package to a concrete version against the live registry and installs *that*, instead of
+  installing a mutable `@latest` tag. Resolution stays live — the job still asks what is published
+  today — while the install becomes reproducible, and the drift issue now names the exact versions
+  a failure was seen against instead of saying only that the SDK moved.
 
 
 ## [0.4.2] - 2026-08-20

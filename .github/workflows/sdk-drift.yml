@@ -33,8 +33,14 @@ jobs:
     # invariant `agents/theokit-skills.md` § 4 forbids and which this job exists to enforce.
     # One definition, referenced by both the install and the report.
     env:
+      #
+      # NAMES, not `name@latest`. The install step below resolves each one to a concrete version at
+      # run time and installs that. The job still tests what is published TODAY — resolution happens
+      # against the live registry on every run — but the install line carries no mutable tag, so the
+      # exact versions are printed, land in the drift issue, and can be re-installed to reproduce a
+      # failure. Today's issue says "the SDK moved" without saying what it moved to.
       TAUGHT_PACKAGES: >-
-        @theokit/sdk@latest @theokit/di@latest @theokit/di-agent@latest @theokit/sdk-tools@latest @theokit/gateway-discord@latest @theokit/gateway-slack@latest @theokit/gateway-telegram@latest
+        @theokit/sdk @theokit/di @theokit/di-agent @theokit/sdk-tools @theokit/gateway-discord @theokit/gateway-slack @theokit/gateway-telegram
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -49,17 +55,34 @@ jobs:
         id: install
         run: |
           set -euo pipefail
-          # Installing @latest at runtime IS the check: this job asks whether the skills still
-          # resolve against whatever the SDK publishes today. A lockfile would pin the very thing
-          # being tested, and the job would pass forever while the skills drifted.
-          # shellcheck disable=SC2086  # word splitting is intended: TAUGHT_PACKAGES is a package list
-          # --ignore-scripts: this job installs seven packages at @latest into a runner that
-          # holds `issues: write`. A lifecycle script in any of them — or in anything they
-          # pull — would run with that token. Measured before adding it: zero packages in the
-          # resolved tree declare preinstall/install/postinstall, so it costs nothing here.
+          # Resolving against the live registry at run time IS the check: this job asks whether the
+          # skills still resolve against what the packages publish TODAY. Committing a lockfile
+          # would pin the very thing being tested, and the job would pass forever while the skills
+          # drifted.
+          #
+          # What IS pinned is the install: each name is resolved to a concrete version first, and
+          # those versions are installed, printed, and carried into the drift issue. Resolution
+          # stays live; the install stops being a mutable tag, so a failure can be reproduced by
+          # re-installing exactly what this run had. (SonarQube githubactions:S8543.)
+          #
+          # shellcheck disable=SC2086  # word splitting is intended: TAUGHT_PACKAGES is a name list
+          RESOLVED=""
+          for pkg in $TAUGHT_PACKAGES; do
+            RESOLVED="$RESOLVED $pkg@$(npm view "$pkg" version)"
+          done
+          RESOLVED="$RESOLVED typescript@$(npm view typescript version)"
+          echo "resolved:$RESOLVED"
+
+          # --ignore-scripts: this job installs seven packages into a runner that holds
+          # `issues: write`. A lifecycle script in any of them — or in anything they pull — would
+          # run with that token. Measured before adding it: zero packages in the resolved tree
+          # declare preinstall/install/postinstall, so it costs nothing here.
           # (SonarQube githubactions:S6505.)
-          npm install --no-save --ignore-scripts $TAUGHT_PACKAGES typescript # zizmor: ignore[adhoc-packages]
+          #
+          # shellcheck disable=SC2086  # word splitting is intended: RESOLVED is a package list
+          npm install --no-save --ignore-scripts $RESOLVED # zizmor: ignore[adhoc-packages]
           echo "sdk=$(node -p "require('./node_modules/@theokit/sdk/package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "resolved=$RESOLVED" >> "$GITHUB_OUTPUT"
 
       - name: Resolve every symbol the skills teach
         id: check
@@ -116,6 +139,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SDK: ${{ steps.install.outputs.sdk }}
+          # The resolved versions, so the reproduce command in the issue re-installs exactly what
+          # this run installed rather than whatever is newest when someone reads it.
+          PKGS: ${{ steps.install.outputs.resolved }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -153,12 +179,12 @@ jobs:
           Reproduce locally:
 
           ```bash
-          npm install --no-save __PKGS__ typescript
+          npm install --no-save --ignore-scripts __PKGS__
           npm test
           ```
 
           Workflow run: __RUN_URL__
           BODY
-          sed -e "s|__SDK__|${SDK}|g" -e "s|__RUN_URL__|${RUN_URL}|g" -e "s|__PKGS__|${TAUGHT_PACKAGES}|g" issue-body.template \
+          sed -e "s|__SDK__|${SDK}|g" -e "s|__RUN_URL__|${RUN_URL}|g" -e "s|__PKGS__|${PKGS}|g" issue-body.template \
             | sed 's/^          //' > issue-body.md
           gh issue create --title "$title" --body-file issue-body.md
