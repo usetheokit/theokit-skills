@@ -95,50 +95,38 @@ jobs:
         run: npm test
 
       - name: Report taught-surface-coverage
-        # F-arch-2 (/review of B-004): this step used to sit BEFORE `check`. A crash in the node
-        # script failed the job, and the issue step never fired — its `if` reads
-        # `steps.check.outcome == 'failure'`, which is unset when `check` never ran. So a bug in
-        # the REPORT would have silenced the ALERT. ADR-2 says this step must not fail the job;
-        # `continue-on-error` plus `always()` is what makes that true rather than intended.
+        # F-arch-2 (/review of B-004): this step used to sit BEFORE `check`. A crash in it failed
+        # the job, and the issue step never fired — its `if` reads `steps.check.outcome == 'failure'`,
+        # which is unset when `check` never ran. So a bug in the REPORT would have silenced the
+        # ALERT. ADR-2 of that plan says this step must not fail the job; `continue-on-error` plus
+        # `always()` is what makes that true rather than intended.
         #
-        # F-tw-1 (/review of B-004): the first version compared the taught set against the
-        # INSTALLED env STRING, so it reported what the workflow DECLARED rather than what the
-        # install achieved. Proved by the reviewer: adding `@theokit/does-not-exist@latest` to that
-        # string still printed 7/7. That is a gate claiming coverage it does not have — the exact
-        # invariant `agents/theokit-skills.md` § 4 forbids and this job exists to enforce.
+        # F-tw-1 / F-tw-10 (same review): it compares against `node_modules`, never against the
+        # declared env string — the first version printed 7/7 with a bogus package in the list, and
+        # then printed 7/7 over an empty node_modules after a failed install. The count is observed.
         #
-        # F-tw-10: and because `always()` now runs it after a failed install, the declared version
-        # would have printed 7/7 over an empty node_modules.
-        #
-        # It reads `node_modules` instead. The number is observed, and a failed install shows as a
-        # low count rather than a confident one.
+        # B-010: the body used to be an inline `node -e`, which meant nothing could test it AND it
+        # carried its own import extractor — a third one, after B-008 unified the two in `tests/`.
+        # It is a file now: `scripts/taught-coverage.mjs`, covered by `tests/taught-coverage.test.mjs`.
         if: always()
         continue-on-error: true
-        run: |
-          set -euo pipefail
-          # shellcheck disable=SC2016  # F-dom-1: the `${…}` below are JS template literals inside a
-          # single-quoted `node -e` argument, not shell expansions. shellcheck cannot tell the two
-          # apart, and actionlint exits 1 on ANY shellcheck output regardless of its severity — so
-          # an `info` finding turns `workflow-lint.yml` red. That lint is the safety net this file's
-          # own plan named, and tripping it would have been the change breaking its own guard.
-          node -e '
-            const fs=require("fs"),path=require("path");
-            const taught=new Set();
-            for(const d of fs.readdirSync("skills")){
-              const f=path.join("skills",d,"SKILL.md"); if(!fs.existsSync(f))continue;
-              for(const m of fs.readFileSync(f,"utf8").matchAll(/from\s*["\x27](@theokit\/[^"\x27]+)["\x27]/g))
-                taught.add(m[1].split("/").slice(0,2).join("/"));
-            }
-            const onDisk=new Map();
-            for(const name of [...taught]){
-              const mf=path.join("node_modules",...name.split("/"),"package.json");
-              if(fs.existsSync(mf)) onDisk.set(name, JSON.parse(fs.readFileSync(mf,"utf8")).version);
-            }
-            const missing=[...taught].filter(p=>!onDisk.has(p)).sort();
-            console.log(`taught-surface-coverage: ${onDisk.size}/${taught.size} taught packages present in node_modules`);
-            for(const [n,v] of [...onDisk].sort()) console.log(`  ${n}@${v}`);
-            if(missing.length) console.log(`  MISSING from node_modules: ${missing.join(", ")}`);
-          '
+        run: node scripts/taught-coverage.mjs
+
+      - name: Fail on a bookkeeping mismatch
+        # The step above reports and can never fail; this one exists only to fail. Two steps rather
+        # than one because ADR-2 above is still in force: a report that can fail is a report that
+        # can silence an alert.
+        #
+        # `steps.install.outcome == 'success'` and not `always()`: asserting over an empty
+        # node_modules would report a bookkeeping mismatch that is really an install failure —
+        # F-tw-10, one step over.
+        #
+        # stdout is discarded because the step above already printed it; the mismatch diagnosis goes
+        # to stderr and still shows. The drift-issue step keys on `steps.check.outcome`, so failing
+        # here can never open a drift issue — which is what keeps "someone forgot to update
+        # TAUGHT_PACKAGES" distinguishable from "a package removed an export".
+        if: steps.install.outcome == 'success'
+        run: node scripts/taught-coverage.mjs > /dev/null
 
       - name: Open an issue when a skill teaches an API the package no longer has
         if: failure() && steps.check.outcome == 'failure'

@@ -6,7 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Added
 
+- The nightly drift job now **fails** when the packages the skills teach and the packages it
+  installs disagree, instead of printing the difference into a log nobody reads. Reverting
+  `TAUGHT_PACKAGES` to a single package used to leave every gate green while the job silently
+  measured one seventh of the taught surface; it now stops, names the six packages it is missing,
+  and says in as many words that this is a bookkeeping mismatch and not API drift — the two failures
+  are answered differently, so they must not look alike. (B-010)
+
 ### Changed
+
+- The coverage comparison moved out of an inline `node -e` inside the workflow and into
+  `scripts/taught-coverage.mjs`, with unit tests. A script embedded in YAML cannot be tested, and
+  this one carried its own import extractor — the third in the repository after B-008 unified the
+  two under `tests/`. Measured before the change: it agreed with the shared extractor today
+  (29 specifiers either way), so the divergence was latent rather than active. (B-010)
 
 ### Deprecated
 
