@@ -70,7 +70,13 @@ jobs:
           for pkg in $TAUGHT_PACKAGES; do
             RESOLVED="$RESOLVED $pkg@$(npm view "$pkg" version)"
           done
-          RESOLVED="$RESOLVED typescript@$(npm view typescript version)"
+          # typescript is the COMPILER, not a package under test, and it is the one thing here that
+          # must NOT float. Pinning it to `npm view typescript version` broke this job on the first
+          # run that tried it: that resolves to 7.x — the native port, whose JS API no longer has
+          # `ts.ScriptTarget` — and `tests/api-resolves.test.mjs` drives `ts.createProgram` directly.
+          # It comes from the lockfile, which is where the version this suite is written against
+          # already lives.
+          RESOLVED="$RESOLVED typescript@$(node -p "require('./package-lock.json').packages['node_modules/typescript'].version")"
           echo "resolved:$RESOLVED"
 
           # --ignore-scripts: this job installs seven packages into a runner that holds
