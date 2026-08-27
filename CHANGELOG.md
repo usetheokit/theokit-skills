@@ -4,7 +4,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Added
+
+- Mutation testing, configured against the existing `node --test` suite. The first run measured
+  **456 mutants and a score of 58.8%** (268 killed, 188 survived) over `lib/` and `bin/`. That is
+  below the 60% floor, so the quality gate stays capped — by a measurement now, rather than by the
+  absence of one. Three consecutive plans had dismissed that cap by ADR, which is how a gate becomes
+  a ritual. Read the score with its shape: a third of the survivors are string literals in report
+  output, which no test asserts on deliberately, so 58.8% under-reports the real protection.
+  `lib/manifest.mjs` survives only 13% of its mutants; `bin/install.mjs` survives 48%. (B-007)
+
 ### Fixed
+
+- `qs` was pinned to a version carrying a moderate DoS advisory, reachable through two dev-only
+  paths (the new mutation tooling, and the Slack gateway adapter added earlier today). An
+  `overrides` entry moves it to a patched release: `npm audit` reports zero at every severity.
+  Dev tree only — `dependencies` stays empty and nothing here reaches a consumer. (B-007)
 
 - The two drift gates disagreed about what counts as a taught import: `no-blind-specifier` carried
   a copy of `api-resolves`'s extractor without its deprecated-fence exclusion, so an import inside

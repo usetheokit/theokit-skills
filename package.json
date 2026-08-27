@@ -1,7 +1,7 @@
 {
   "name": "@theokit/skills",
   "version": "0.4.2",
-  "description": "Installs the TheoKit ecosystem agent skills into every AI coding tool you use — Claude Code, OpenAI Codex, Gemini CLI, GitHub Copilot, Zed, Devin Desktop — on Windows, macOS and Linux. Zero dependencies; links where that follows your lockfile, copies where it cannot.",
+  "description": "Installs the TheoKit ecosystem agent skills into every AI coding tool you use \u2014 Claude Code, OpenAI Codex, Gemini CLI, GitHub Copilot, Zed, Devin Desktop \u2014 on Windows, macOS and Linux. Zero dependencies; links where that follows your lockfile, copies where it cannot.",
   "type": "module",
   "bin": {
     "theokit-skills": "./bin/install.mjs"
@@ -44,6 +44,7 @@
     "prepublishOnly": "npm test"
   },
   "devDependencies": {
+    "@stryker-mutator/core": "^10.0.0",
     "@theokit/di": "^0.2.0",
     "@theokit/di-agent": "^0.4.0",
     "@theokit/gateway-discord": "^0.1.5",
@@ -55,5 +56,8 @@
   },
   "engines": {
     "node": ">=22.12.0"
+  },
+  "overrides": {
+    "qs": "^6.15.2"
   }
 }
