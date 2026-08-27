@@ -44,8 +44,35 @@ jobs:
           # Installing @latest at runtime IS the check: this job asks whether the skills still
           # resolve against whatever the SDK publishes today. A lockfile would pin the very thing
           # being tested, and the job would pass forever while the skills drifted.
-          npm install --no-save @theokit/sdk@latest typescript # zizmor: ignore[adhoc-packages]
+          npm install --no-save @theokit/sdk@latest @theokit/di@latest @theokit/di-agent@latest @theokit/sdk-tools@latest @theokit/gateway-discord@latest @theokit/gateway-slack@latest @theokit/gateway-telegram@latest typescript # zizmor: ignore[adhoc-packages]
           echo "sdk=$(node -p "require('./node_modules/@theokit/sdk/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Report taught-surface-coverage
+        # ADR-2 of records/plans/widen-drift-cron-plan.md. The gap this job had was invisible
+        # because nothing reported it: six of seven taught packages came from the lockfile, at
+        # versions that by construction cannot have moved. This prints what was reached, so the
+        # same drift cannot return silently when a package is added to a skill and not to the
+        # install line above. It does NOT fail — see the ADR's rejected alternative.
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs=require("fs"),path=require("path");
+            const taught=new Set();
+            for(const d of fs.readdirSync("skills")){
+              const f=path.join("skills",d,"SKILL.md"); if(!fs.existsSync(f))continue;
+              for(const m of fs.readFileSync(f,"utf8").matchAll(/from\s*["\x27](@theokit\/[^"\x27]+)["\x27]/g))
+                taught.add(m[1].split("/").slice(0,2).join("/"));
+            }
+            const installed=new Set(process.env.INSTALLED.split(" ").filter(Boolean).map(s=>s.replace(/@latest$/,"")));
+            const missing=[...taught].filter(p=>!installed.has(p)).sort();
+            console.log(`taught-surface-coverage: ${taught.size-missing.length}/${taught.size} packages installed at @latest`);
+            if(missing.length) console.log(`  NOT at @latest: ${missing.join(", ")}`);
+          '
+        env:
+          INSTALLED: >-
+            @theokit/sdk@latest @theokit/di@latest @theokit/di-agent@latest
+            @theokit/sdk-tools@latest @theokit/gateway-discord@latest
+            @theokit/gateway-slack@latest @theokit/gateway-telegram@latest
 
       - name: Resolve every symbol the skills teach
         id: check
@@ -81,7 +108,7 @@ jobs:
           Reproduce locally:
 
           ```bash
-          npm install --no-save @theokit/sdk@latest typescript
+          npm install --no-save @theokit/sdk@latest @theokit/di@latest @theokit/di-agent@latest @theokit/sdk-tools@latest @theokit/gateway-discord@latest @theokit/gateway-slack@latest @theokit/gateway-telegram@latest typescript
           npm test
           ```
 

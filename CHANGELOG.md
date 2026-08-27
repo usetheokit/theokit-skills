@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Added
 
+- The nightly drift job now installs **every** `@theokit` package the skills import at `@latest`,
+  not only `@theokit/sdk`. Measured before the change: the skills teach **175 symbols across seven
+  packages**, and the job reached 137 of them (78%) at a currently published version — the other 38
+  arrived from the lockfile, at versions that by construction cannot have moved. A removed export
+  in a gateway adapter or in `@theokit/di` produced no signal here. The job also prints its own
+  coverage now (`taught-surface-coverage: 7/7`), so the same gap cannot return silently when a
+  package is added to a skill and not to the install line. (B-004)
+
 - The drift gate now resolves the five `@theokit` specifiers it used to report as
   `not checked (not installed here)`. `@theokit/di`, `@theokit/di-agent` and the Discord, Slack and
   Telegram gateway adapters are installed as devDependencies, so the 33 symbols four skills teach
