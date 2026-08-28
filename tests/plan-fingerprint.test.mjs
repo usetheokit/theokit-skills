@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { fingerprint, verify } from "../scripts/plan-fingerprint.mjs";
+import { fingerprint, readFingerprint, verify } from "../scripts/plan-fingerprint.mjs";
 
 const CLI = fileURLToPath(new URL("../scripts/plan-fingerprint.mjs", import.meta.url));
 
@@ -77,7 +77,11 @@ test("a malformed --verify argument is refused, distinctly from a mismatch", () 
   // EC-3: `--verify` takes its argument from a `sed` in a shell pipeline, and a pipeline that
   // matches nothing passes an EMPTY STRING. Comparing that to a real hash is a mismatch — which
   // reads as "the plan was edited" when what failed was the extraction.
-  for (const argument of ["", "zz", "abc", "0123456789abcdefg"]) {
+  // "" is NOT in this list any more, and the change is a design change rather than a test being
+  // bent: an empty argument is what a `sed` yields for a commit with NO TRAILER, so it is the
+  // `absent` case (exit 4), asserted in its own test below. Everything non-empty that is not a
+  // fingerprint is a typo or a broken extraction.
+  for (const argument of ["zz", "abc", "0123456789abcdefg"]) {
     const run = spawnSync(process.execPath, [CLI, "plan-fingerprint", "--verify", argument], {
       encoding: "utf8",
     });
@@ -90,4 +94,59 @@ test("the tool prints a trailer for a real plan in this repository", () => {
 
   assert.equal(run.status, 0, run.stderr);
   assert.match(run.stdout, /^Plan-SHA256: [0-9a-f]{16} \(.claude\/records\/plans\/plan-fingerprint-plan\.md\)$/m);
+});
+
+test("a commit with no trailer is `absent` through the CLI, not `malformed`", () => {
+  // F-1 (/review, HIGH): the doc promised exit 2 for "no trailer", the CLI gave 3 with a message
+  // about malformed input, and `verify()`'s `absent` branch was unreachable from `main()` — a branch
+  // with a test and no production caller, which is the wiring defect this repository hunts.
+  //
+  // The distinction is not pedantry. `--verify` takes its argument from a `sed` over the commit
+  // body; a commit with no trailer yields an EMPTY STRING, and that is the *absent* case, not a
+  // typo. Calling it malformed sends the reader to check their pipeline instead of their commit.
+  const absent = spawnSync(process.execPath, [CLI, "plan-fingerprint", "--verify", ""], {
+    encoding: "utf8",
+  });
+  assert.equal(absent.status, 4, "no trailer is its own answer");
+  assert.match(absent.stderr, /no .*trailer/i);
+
+  const malformed = spawnSync(process.execPath, [CLI, "plan-fingerprint", "--verify", "zz"], {
+    encoding: "utf8",
+  });
+  assert.equal(malformed.status, 3, "a typo is still malformed");
+});
+
+test("a plan path that cannot be read is reported, not thrown as drift", () => {
+  // F-2 (/review): `existsSync` answers existence, not readability. A directory at the plan path
+  // threw an uncaught EISDIR and exited 1 — the SAME code as "the plan changed" — so a CI step
+  // running the documented one-liner would announce drift for a plan nobody touched. The comment
+  // above that check promised "named, never thrown".
+  //
+  // Tested at the library boundary, because the CLI resolves its root from the module's own
+  // location. A first version of this test pointed an env var the tool does not read at a scratch
+  // directory, so the tool looked in the real repository, found nothing, and exited 2 — the test
+  // passed for entirely the wrong reason.
+  const root = mkdtempSync(join(tmpdir(), "fingerprint-dir-"));
+  try {
+    const asDirectory = join(root, "adirectory-plan.md");
+    mkdirSync(asDirectory, { recursive: true });
+
+    const result = readFingerprint(asDirectory);
+
+    assert.equal(result.kind, "unreadable");
+    assert.equal(result.code, "EISDIR");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a slug cannot reach outside the plans directory", () => {
+  // F-3 (/review): `../../../tmp/evil` printed "matches the plan on disk", exit 0, over a planted
+  // file — a confident green about the wrong file, where every other bad slug gets exit 2. Not a
+  // privilege boundary (the slug is developer-typed), but this tool exists to refuse confident
+  // wrong answers, so shipping one would be a poor joke.
+  const run = spawnSync(process.execPath, [CLI, "../../../../../../tmp/whatever"], { encoding: "utf8" });
+
+  assert.equal(run.status, 2);
+  assert.match(run.stderr, /outside|not a plan slug/i);
 });

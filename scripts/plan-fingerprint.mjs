@@ -17,7 +17,7 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -27,8 +27,36 @@ export function fingerprint(file) {
   return createHash("sha256").update(readFileSync(file)).digest("hex").slice(0, 16);
 }
 
+/**
+ * The fingerprint, or why it could not be taken.
+ *
+ * `existsSync` answers existence, not readability. A directory at the plan path — or a permission
+ * error — threw an uncaught `EISDIR`/`EACCES` and exited **1**, which is the code for "the plan
+ * changed". A CI step running the documented one-liner would then announce plan drift for a plan
+ * nobody touched. The comment beside that check promised "named, never thrown"; it now is.
+ * (F-2, /review.)
+ */
+export function readFingerprint(file) {
+  try {
+    return { kind: "ok", digest: fingerprint(file) };
+  } catch (error) {
+    return { kind: "unreadable", code: error.code ?? "ERR", message: error.message };
+  }
+}
+
+const PLANS_DIR = join(REPO_ROOT, ".claude", "records", "plans");
+
+/**
+ * The plan file for a slug, or `undefined` when the slug would escape the plans directory.
+ *
+ * `../../../tmp/evil` used to resolve, read and print "matches the plan on disk" with exit 0 — a
+ * confident green about the wrong file, where every other bad slug got exit 2. The slug is
+ * developer-typed, so this is a correctness boundary rather than a privilege one; a tool whose
+ * entire purpose is refusing confident wrong answers should not ship one. (F-3, /review.)
+ */
 export function planPath(slug) {
-  return join(REPO_ROOT, ".claude", "records", "plans", `${slug}-plan.md`);
+  const candidate = resolve(PLANS_DIR, `${slug}-plan.md`);
+  return candidate.startsWith(`${PLANS_DIR}${sep}`) ? candidate : undefined;
 }
 
 /**
@@ -56,6 +84,10 @@ function main(argv = process.argv.slice(2)) {
   }
 
   const file = planPath(slug);
+  if (file === undefined) {
+    console.error(`plan-fingerprint: "${slug}" is not a plan slug — it resolves outside the plans directory.`);
+    return 2;
+  }
   if (!existsSync(file)) {
     // EC-1: named, never thrown. A tool whose failure mode is a stack trace gets wrapped in
     // `|| true` by the first person who scripts it, and then its answer is silence.
@@ -63,17 +95,32 @@ function main(argv = process.argv.slice(2)) {
     return 2;
   }
 
+  const read = readFingerprint(file);
+  if (read.kind === "unreadable") {
+    console.error(`plan-fingerprint: cannot read ${relative(REPO_ROOT, file)} (${read.code}).`);
+    console.error("  This is not drift — the plan was never compared.");
+    return 2;
+  }
+
   const at = argv.indexOf("--verify");
   if (at === -1) {
-    console.log(`Plan-SHA256: ${fingerprint(file)} (${relative(REPO_ROOT, file)})`);
+    console.log(`Plan-SHA256: ${read.digest} (${relative(REPO_ROOT, file)})`);
     return 0;
   }
 
   const recorded = argv[at + 1];
-  // EC-3: the argument usually arrives from a `sed` in a shell pipeline, and a pipeline that matches
-  // nothing passes an EMPTY STRING. Comparing that to a real hash yields "mismatch", which reads as
-  // "the plan was edited" when what actually failed was the extraction. Refuse it as its own thing.
-  if (recorded === undefined || !HEX16.test(recorded)) {
+  // An EMPTY argument is the ABSENT case, not a malformed one: `--verify` is fed by a `sed` over the
+  // commit body, and a commit carrying no trailer yields "". Calling that malformed sent the reader
+  // to check their pipeline instead of their commit — and it made `verify()`'s `absent` branch
+  // unreachable from here, a branch with a test and no production caller. (F-1, /review.)
+  if (recorded === undefined || recorded === "") {
+    console.error(`plan-fingerprint: this commit records no Plan-SHA256 trailer for "${slug}".`);
+    console.error("  Absent is not a pass: nothing was compared. Add the trailer, or say why not.");
+    return 4;
+  }
+  // EC-3: a non-empty argument that is not a fingerprint is a typo or a broken extraction, and is
+  // neither a mismatch nor an absence.
+  if (!HEX16.test(recorded)) {
     console.error(
       `plan-fingerprint: --verify expects 16 hex characters, got ${JSON.stringify(recorded ?? null)}.`,
     );
