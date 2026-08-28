@@ -43,6 +43,52 @@ const skillsDir = join(root, "skills");
 export const DEPRECATED_FENCE =
   /^(?:❌|(?:before|old|legacy|deprecated|don'?t|do not|instead of)\b).{0,40}:$/i;
 
+/**
+ * Fences that open and never close, as `{ line, fence }` in document order.
+ *
+ * `fencePattern()` requires the closing group, so an unterminated fence never matches and its block
+ * is dropped SILENTLY. `skill-examples.test.mjs` reports "N skill(s) compiled" — so a skill whose
+ * only TypeScript example has a typo'd closing fence is counted as compiling with ZERO blocks read.
+ * A gate reporting success over an empty set is the shape `code-quality-golden-rule.md` § 5 records
+ * for a mutation run that produced no mutants: absolute green, nothing measured. (B-025, F-5.)
+ *
+ * WHAT THE ADDRESS MEANS, stated because it is not the obvious thing. It points at the fence left
+ * OPEN, which is not always the fence somebody broke. Measured: breaking the closer on line 25 of a
+ * file with four examples makes line 32's opener act as line 22's closer, and the cascade leaves
+ * line 59 unclosed — so the report reads 59 while the typo is at 25. The statement is TRUE and the
+ * address is real; it just answers "which fence has no partner" rather than "where is the typo".
+ * Diagnosing the second needs an intent this reader does not have, and claiming it would be worse
+ * than pointing where it can.
+ *
+ * Deliberately a separate reader rather than a change to `fencePattern()`. Making that pattern
+ * tolerate a missing close would make it match to end-of-file and swallow the rest of the document
+ * into one block — worse than dropping, because a wrong answer wears a right one's clothes. What was
+ * missing was never the tolerance; it was somebody counting.
+ */
+export function unterminatedFences(text) {
+  const open = [];
+  const lines = text.split("\n");
+  for (const [i, line] of lines.entries()) {
+    const m = /^[ \t]*(`{3,}|~{3,})/.exec(line);
+    if (m === null) continue;
+    const fence = m[1];
+    const last = open.at(-1);
+    // A closer must be the SAME character and at least as long — CommonMark, and the rule that makes
+    // a four-backtick block close at its own fence. A backtick fence "closed" by tildes closes
+    // nothing: the first stays open and the second opens its own.
+    if (last !== undefined) {
+      // Inside an open fence, a line is BODY unless it is a valid closer — same character, at least
+      // as long. The inner ``` of a four-backtick block is content, and treating it as a new opener
+      // left the outer fence permanently unclosed. Four backticks exist precisely to wrap examples
+      // containing backticks, so this is the case the reader is for, not an exotic one.
+      if (fence[0] === last.fence[0] && fence.length >= last.fence.length) open.pop();
+      continue;
+    }
+    open.push({ line: i + 1, fence });
+  }
+  return open;
+}
+
 /** Byte ranges of fenced blocks that the prose marked as the old way. */
 /**
  * The bodies of the live TypeScript fenced blocks in a skill, in document order.
@@ -182,12 +228,33 @@ const IMPORT_FORMS = [
   [/^[ \t]*import\s*["']([^"']+)["'];?[ \t]*$/gm, (m) => [m[1], []]],
 ];
 
+/**
+ * Whether the line immediately above `index` disowns what follows it.
+ *
+ * `DEPRECATED_FENCE` excludes a whole block when the marker introduces the FENCE. It cannot see a
+ * marker INSIDE a live block — `// ❌ Do not:` on the line above one import of three — so an example
+ * the author explicitly disowned was read as taught. Measured by /review as yielding
+ * `{ specifier: "@theokit/gone", names: ["bad"] }`. Not prose read as code, which the `^[ \t]*`
+ * anchor already defeats, but code the author DISOWNED read as taught. (B-026.)
+ *
+ * One LINE, not the rest of the block. Excluding to the end is the easy over-correction and it
+ * silently drops every real import following an anti-example inside one fence — which is the common
+ * shape: show the wrong way, then the right way, in the same example.
+ */
+function disownedLine(text, index) {
+  const before = text.lastIndexOf("\n", Math.max(0, index - 1));
+  if (before <= 0) return false;
+  const start = text.lastIndexOf("\n", before - 1) + 1;
+  return DEPRECATED_FENCE.test(text.slice(start, before).replace(/^[ \t]*(?:\/\/|#|\*)[ \t]*/, "").trim());
+}
+
 export function importsIn(text, { includeDeprecated = false } = {}) {
   const skip = includeDeprecated ? [] : deprecatedRanges(text);
   const found = [];
   for (const [pattern, read] of IMPORT_FORMS) {
     for (const m of text.matchAll(pattern)) {
       if (skip.some(([a, b]) => m.index >= a && m.index < b)) continue;
+      if (disownedLine(text, m.index)) continue;
       const [specifier, names] = read(m);
       // A form that binds no name is still a taught SPECIFIER — `export *` and the side-effect
       // import both reach here with an empty or symbolic list, and dropping them on `names.length`

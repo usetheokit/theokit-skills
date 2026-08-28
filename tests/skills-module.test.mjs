@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { importsIn, liveTypescriptBlocks, skillFiles, readSkill, specifiersIn } from "./_skills.mjs";
+import { importsIn, liveTypescriptBlocks, skillFiles, readSkill, specifiersIn, unterminatedFences } from "./_skills.mjs";
 
 // B-017 and B-024. Both are LATENT — measured across all 31 skills: 90 braced imports, and zero
 // default, namespace or re-export forms; zero indented, tilde or four-backtick fences. Built anyway
@@ -144,4 +144,81 @@ test("a deprecated fence excludes the NEW import forms too, not only the braced 
   ]) {
     assert.deepEqual([...importsIn(`❌ Do not:\n\n${body}\n`)], [], body.slice(0, 24));
   }
+});
+
+// ── B-025 / B-026: two latent gaps /review measured and this closes ──────────────────────────────
+
+test("an unterminated fence is distinguishable from no fence at all", () => {
+  // B-025. The closing group is required, so a fence with no close never matches and the block is
+  // dropped SILENTLY. `skill-examples.test.mjs` reports "N skill(s) compiled" — a skill whose only
+  // TypeScript example has a typo'd closing fence is counted as compiling with zero blocks read.
+  // That is a gate reporting success over an empty set, the same shape `code-quality-golden-rule.md`
+  // § 5 records for a mutation run that produced no mutants.
+  assert.deepEqual(unterminatedFences("prose only, no fences here\n"), []);
+  assert.deepEqual(
+    unterminatedFences("```typescript\nconst a = 1;\n"),
+    [{ line: 1, fence: "```" }],
+  );
+});
+
+test("a closed fence is not reported as unterminated", () => {
+  // The control. "Match less" satisfies the first assertion above and destroys the reader.
+  assert.deepEqual(unterminatedFences("```typescript\nconst a = 1;\n```\n"), []);
+  assert.deepEqual(unterminatedFences("~~~ts\nconst a = 1;\n~~~\n"), []);
+  assert.deepEqual(unterminatedFences("````typescript\nconst a = 1;\n```\nconst b = 2;\n````\n"), []);
+});
+
+test("a tilde run inside an open backtick fence is content, not a second fence", () => {
+  // Written expecting TWO unterminated fences, on the reasoning that a backtick fence closed by
+  // tildes is not a valid pair so each is its own. The code disagreed and the code was right:
+  // CommonMark says that inside an open ``` fence a `~~~` line is literal CONTENT. One fence is
+  // open, not two — and a reader that counted two would report a phantom every time a skill shows
+  // a tilde fence inside a backtick one.
+  //
+  // The criterion was wrong and the implementation was right. Recorded rather than quietly
+  // corrected, because this is the fourth criterion in this backlog written without running the
+  // thing that produces its number.
+  const found = unterminatedFences("```typescript\na\n~~~\n");
+  assert.deepEqual(found, [{ line: 1, fence: "```" }]);
+});
+
+test("an anti-example marked INSIDE a live fence is not taught", () => {
+  // B-026. `DEPRECATED_FENCE` inspects only the line immediately preceding the fence, so a
+  // disowning marker on the line ABOVE the import but INSIDE the block does not exclude it —
+  // measured by /review as yielding `{ specifier: "@theokit/gone", names: ["bad"] }`. Not prose read
+  // as code, which the `^[ \t]*` anchor already defeats, but code the author DISOWNED read as taught.
+  const text = [
+    "```typescript",
+    "// ❌ Do not:",
+    'import { bad } from "@theokit/gone";',
+    'import { good } from "@theokit/sdk";',
+    "```",
+    "",
+  ].join("\n");
+
+  assert.deepEqual(
+    [...importsIn(text)].map((i) => i.specifier),
+    ["@theokit/sdk"],
+  );
+});
+
+test("the disowning marker excludes its own line, not the rest of the block", () => {
+  // The control for the test above. Excluding to the end of the block is the easy over-correction,
+  // and it would silently drop every real import that follows an anti-example inside one fence.
+  const text = [
+    "```typescript",
+    "// ❌ Do not:",
+    'import { bad } from "@theokit/gone";',
+    "",
+    "// Do this instead:",
+    'import { good } from "@theokit/sdk";',
+    'import { alsoGood } from "@theokit/di";',
+    "```",
+    "",
+  ].join("\n");
+
+  assert.deepEqual(
+    [...importsIn(text)].map((i) => i.specifier).sort(),
+    ["@theokit/di", "@theokit/sdk"],
+  );
 });

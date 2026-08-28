@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { liveTypescriptBlocks, readSkill, skillFiles, skillNames } from "./_skills.mjs";
+import { liveTypescriptBlocks, readSkill, skillFiles, skillNames, unterminatedFences } from "./_skills.mjs";
 import { compile } from "./_typecheck.mjs";
 
 /**
@@ -109,6 +109,16 @@ test("every allowlisted skill's examples compile", () => {
   );
   const sources = Object.fromEntries(COMPILES.map((slug) => [`${slug}.ts`, bodyOf(slug)]));
   const diagnostics = compile(sources);
+
+  // An unterminated fence makes `liveTypescriptBlocks` read ZERO blocks from a skill, and this gate
+  // then reports it as compiling — success over an empty set, which `code-quality-golden-rule.md`
+  // § 5 records as the worst possible output. Asserted BEFORE the compile, so the count printed
+  // below is a count of examples that were actually read. (B-025.)
+  const unterminated = COMPILES.flatMap((slug) =>
+    unterminatedFences(readSkill(skillFileOf(slug)))
+      .map((f) => `skills/${slug}/SKILL.md:${f.line}  fence \`${f.fence}\` is never closed`),
+  );
+  assert.deepEqual(unterminated, [], "an unread example is not a compiling one");
 
   const total = skillNames().length;
   console.log(`  ${COMPILES.length} skill(s) compiled, ${total - COMPILES.length} not in the allowlist`);

@@ -4,6 +4,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Fixed
+
+- A skill whose example has an unclosed fence is no longer counted as compiling. The block was read
+  as zero blocks and the gate reported success — over an empty set, which is the worst output a gate
+  can produce: absolute green with nothing measured. It now names the fence and the file. (B-025)
+
+- An anti-example disowned INSIDE a live block is no longer taught. The exclusion looked only at the
+  line before the fence, so `// ❌ Do not:` above one import of three excluded nothing, and a symbol
+  the author explicitly marked as wrong was read as a taught API. The exclusion covers exactly the
+  line the marker introduces — showing the wrong way and then the right way in one example is the
+  common shape, and swallowing the rest of the block would have dropped the right way with it. (B-026)
+
+### Fixed
+
+- A `--global` install no longer writes a manifest into whatever directory you ran it from. It
+  installed into your home directory and recorded itself in the current working directory, with
+  entries like `../home/.agents/skills/theokit-agent-core` — paths that mean nothing from anywhere
+  else, in a file you could commit by accident. `--check` in that directory then measured the home
+  install while looking like it described the project it sat in. The manifest now lives in the scope
+  it describes, and a project `--check` that finds nothing says when a personal install exists
+  instead of reporting a bare absence. (B-022)
+
+- A linked skill whose dependency changed no longer reports that it "no longer matches this version".
+  In link mode the installed path is a symlink into `node_modules`, so a same-version content change
+  there — a workspace dependency, a `file:` install, a repack — produced a message that was false
+  twice: the version did match, and you had changed nothing. Linked and copied drift are now reported
+  separately, because the remedies differ: reinstalling fixes an edited copy, and only the dependency
+  moving explains a linked one. (B-023)
+
+- A project `--check` that finds a home-directory manifest it cannot read says so, instead of
+  promising a personal install and a command that would report on it. `--check --global` would have
+  returned the same unhelpful message — a dead end offered as a next step. (B-022)
+
 ### Added
 
 ### Changed

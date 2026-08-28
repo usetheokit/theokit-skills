@@ -7,7 +7,7 @@
  */
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -181,4 +181,126 @@ test("installing a second tool keeps the first one inside the gate", () => {
   const after = spawnSync(process.execPath, [BIN, "--check"], { cwd: dir, encoding: "utf8" });
 
   assert.equal(after.status, 1, "the first tool's install must still be checked");
+});
+
+// ── B-022: a --global install writes a project-shaped manifest into whatever cwd you stood in ────
+//
+// Reproduced 2026-08-28: 31 entries whose paths read `../home/.agents/skills/theokit-agent-core`,
+// in a directory chosen by nothing but where the operator happened to be. The file is committable,
+// meaningless from anywhere else, and `--check` there measures a home install while appearing to
+// describe the project it sits in.
+
+/** A scratch HOME plus an unrelated cwd. `USERPROFILE` too — `homedir()` reads that on Windows, and
+ *  a test that sets only `HOME` would install into the developer's REAL home there. (EC-1.) */
+function personalScope() {
+  const root = project();
+  const home = join(root, "home");
+  const elsewhere = join(root, "elsewhere");
+  mkdirSync(home);
+  mkdirSync(elsewhere);
+  const env = { ...process.env, HOME: home, USERPROFILE: home };
+  return { home, elsewhere, env };
+}
+
+test("a --global install writes no manifest into the working directory", () => {
+  const { home, elsewhere, env } = personalScope();
+  // EC-2: `!existsSync(...)` passes trivially in a fresh directory — it would pass against a build
+  // that writes nothing and against one that crashes before writing. The decoy makes the assertion
+  // distinguish "correctly did not write here" from "did nothing".
+  const decoy = join(elsewhere, ".theokit-skills.json");
+  writeFileSync(decoy, '{"decoy":true}\n');
+
+  execFileSync(process.execPath, [BIN, "--global", "--copy"], { cwd: elsewhere, encoding: "utf8", env });
+
+  // EC-1: prove HOME took before believing anything about the manifest.
+  assert.ok(existsSync(join(home, ".agents", "skills")), "the install did not land in the scratch home");
+  assert.equal(JSON.parse(readFileSync(decoy, "utf8")).decoy, true, "the cwd manifest was overwritten");
+  assert.ok(existsSync(join(home, ".theokit-skills.json")), "no manifest in the scope it describes");
+});
+
+test("a global manifest records paths that resolve from its own scope", () => {
+  const { home, elsewhere, env } = personalScope();
+
+  execFileSync(process.execPath, [BIN, "--global", "--copy"], { cwd: elsewhere, encoding: "utf8", env });
+
+  const manifest = JSON.parse(readFileSync(join(home, ".theokit-skills.json"), "utf8"));
+  assert.ok(manifest.entries.length > 0);
+  for (const entry of manifest.entries) {
+    // EC-3, and this is the assertion that would otherwise have shipped: the broken build wrote
+    // `../home/.agents/skills/x`, which RESOLVES from a cwd that sits beside home — the exact layout
+    // this fixture has. Existence alone passes on the defect. The absence of `..` is what encodes
+    // "meaningful from its own scope"; existence only encodes the accident.
+    assert.ok(!entry.path.split(/[\\/]/).includes(".."), `escaping path: ${entry.path}`);
+    assert.ok(existsSync(join(home, entry.path)), `unresolvable from its own scope: ${entry.path}`);
+  }
+});
+
+test("--check --global reports on the personal scope", () => {
+  const { elsewhere, env } = personalScope();
+  execFileSync(process.execPath, [BIN, "--global", "--copy"], { cwd: elsewhere, encoding: "utf8", env });
+
+  const checked = spawnSync(process.execPath, [BIN, "--check", "--global"], {
+    cwd: elsewhere, encoding: "utf8", env,
+  });
+
+  assert.equal(checked.status, 0, checked.stderr);
+  assert.match(checked.stdout, /up to date/);
+});
+
+test("--check says when only a personal install exists", () => {
+  const { elsewhere, env } = personalScope();
+  execFileSync(process.execPath, [BIN, "--global", "--copy"], { cwd: elsewhere, encoding: "utf8", env });
+
+  const checked = spawnSync(process.execPath, [BIN, "--check"], { cwd: elsewhere, encoding: "utf8", env });
+
+  assert.notEqual(checked.status, 0, "a project check must not pass on a personal install");
+  assert.match(checked.stderr, /personal/i, `the absent message hides the personal install: ${checked.stderr}`);
+});
+
+test("a project install still writes its manifest where it always did", () => {
+  // EC-7. Splitting the scope is exactly the change that quietly relocates the common case.
+  const dir = project();
+
+  run(dir, ["--copy"]);
+
+  const manifest = JSON.parse(readFileSync(join(dir, ".theokit-skills.json"), "utf8"));
+  assert.ok(manifest.entries.length > 0);
+  for (const entry of manifest.entries) {
+    assert.ok(!entry.path.split(/[\\/]/).includes(".."), `escaping path: ${entry.path}`);
+  }
+});
+
+// F2 (/review of B-022): the hint was driven by `existsSync`, which proves a PATH exists — while the
+// sentence promised an INSTALL exists and told the reader to run a command that would report on it.
+// Measured four ways by the reviewer (a directory at that path, an old-schema manifest, malformed
+// JSON, an unreadable file): each produced the promise, and following it returned the same
+// unhelpful message. A claim the code did not verify, handed to the user as if it had.
+
+test("the personal-install hint is not made about a file this version cannot read", () => {
+  const { home, elsewhere, env } = personalScope();
+  // Old schema: a real file, a real past install, and nothing `--check --global` can report on.
+  writeFileSync(join(home, ".theokit-skills.json"), '{"schema":1,"version":"0.0.1","entries":[]}\n');
+
+  const checked = spawnSync(process.execPath, [BIN, "--check"], { cwd: elsewhere, encoding: "utf8", env });
+
+  assert.notEqual(checked.status, 0);
+  assert.doesNotMatch(
+    checked.stderr,
+    /install does exist/,
+    `promised a report that --check --global cannot produce: ${checked.stderr}`,
+  );
+  // Silence would be its own dishonesty — there IS something there, and the reader should know the
+  // personal install is STALE rather than absent.
+  assert.match(checked.stderr, /cannot read/i, `said nothing about the file that is there: ${checked.stderr}`);
+});
+
+test("the personal-install hint still fires for a real personal install", () => {
+  // The control for the test above: narrowing the claim must not silence it. Without this, gating on
+  // readability is satisfiable by never hinting at all.
+  const { elsewhere, env } = personalScope();
+  execFileSync(process.execPath, [BIN, "--global", "--copy"], { cwd: elsewhere, encoding: "utf8", env });
+
+  const checked = spawnSync(process.execPath, [BIN, "--check"], { cwd: elsewhere, encoding: "utf8", env });
+
+  assert.match(checked.stderr, /install does exist/);
 });
