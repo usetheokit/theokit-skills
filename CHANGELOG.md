@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Added
 
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [0.6.0] - 2026-08-27
+
+### Added
+
 - The nightly drift job now **fails** when a package the skills teach was not installed at the
   version that run resolved from the registry. It names the package, both versions, and which of
   three things went wrong — the package is not in the install list (so whatever is on disk came from
@@ -14,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   `BOOKKEEPING MISMATCH — this is not API drift` in those words, and files no drift issue: someone
   forgetting to update a list and a package removing an export are answered differently and must not
   look alike. (B-010)
+
 
 ### Changed
 
@@ -50,14 +65,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   this one carried its own import extractor — the third in the repository after B-008 unified the
   two under `tests/`. Measured before the change: it agreed with the shared extractor today
   (29 specifiers either way), so the divergence was latent rather than active. (B-010)
-
-### Deprecated
-
-### Removed
-
-### Fixed
-
-### Security
 
 ## [0.5.0] - 2026-08-27
 
