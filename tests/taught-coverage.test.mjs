@@ -269,3 +269,17 @@ test("the BOOKKEEPING literal reaches stderr — it is the signal T1.2 rests on"
   assert.match(run.stderr, /BOOKKEEPING MISMATCH — this is not API drift\./);
   assert.match(run.stderr, /not in TAUGHT_PACKAGES/);
 });
+
+test("an unrecognised argument fails loudly instead of degrading to report-only", () => {
+  // F-dom-9: the mode is an argv string living in a YAML file nothing tests. A typo — `--asert` —
+  // would have made the assertion step print an inventory and exit 0, turning the gate off without
+  // any signal. That is the failure class this whole item exists to remove, reintroduced by the fix
+  // for it. Unknown input is rejected rather than ignored (rules/error-handling.md § 2).
+  const run = spawnSync(process.execPath, [CLI, "--asert"], {
+    encoding: "utf8",
+    env: { ...process.env, RESOLVED: "@theokit/sdk@4.60.0" },
+  });
+
+  assert.equal(run.status, 2, `a typo must not look like report mode; stdout was:\n${run.stdout}`);
+  assert.match(run.stderr, /--asert/);
+});

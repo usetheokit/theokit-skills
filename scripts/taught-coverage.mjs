@@ -15,7 +15,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { readSkill, skillFiles, specifiersIn } from "../tests/_skills.mjs";
 
@@ -154,6 +154,18 @@ function main(argv = process.argv.slice(2)) {
   // step invoked the assertion without `RESOLVED` and exited 1 on every single run — swallowed by
   // `continue-on-error`, printing a misleading mismatch into a green job. Found by reading the log
   // of run 33130141734 rather than its `conclusion`, which `continue-on-error` had marked success.
+  // Unknown input is rejected, not ignored. The mode lives as an argv string in a YAML file that
+  // nothing tests, so `--asert` would otherwise print an inventory and exit 0 — the gate turned off
+  // with no signal, which is the exact failure this item exists to remove. Exit 2 rather than 1:
+  // a broken invocation is not a bookkeeping mismatch, and a reader must be able to tell them
+  // apart. (F-dom-9, /review.)
+  const unknown = argv.filter((a) => a !== "--assert");
+  if (unknown.length) {
+    console.error(`taught-coverage: unrecognised argument(s): ${unknown.join(", ")}`);
+    console.error("  usage: taught-coverage.mjs [--assert]");
+    console.error("  Refusing to run: an unrecognised flag must not look like report mode.");
+    return 2;
+  }
   const asserting = argv.includes("--assert");
 
   const taught = taughtPackages();
@@ -216,4 +228,9 @@ function main(argv = process.argv.slice(2)) {
   return 1;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) process.exit(main());
+// `pathToFileURL`, not a hand-built `file://` string: on Windows the two differ
+// (`file://D:\a\...` vs `file:///D:/a/...`), the guard is false, `main()` never runs, and the
+// process exits 0 having printed nothing. `ci.yml` runs this suite on `windows-latest`, and three
+// tests here spawn this file as a CLI — so the hand-built form would have failed there while
+// passing everywhere it was tried. Stdlib does it (parsimony rung 2). Found by /review, F-arch-4.
+if (import.meta.url === pathToFileURL(process.argv[1]).href) process.exit(main());
