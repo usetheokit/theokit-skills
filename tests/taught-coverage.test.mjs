@@ -95,3 +95,29 @@ test("reverting the install list to a single package is caught, against the real
   assert.ok(result.problems.every((p) => p.kind === "not-resolved"));
   assert.ok(result.problems.some((p) => p.name === "@theokit/gateway-slack"));
 });
+
+// ── T1.3, from the edge-case analysis that /review Step 6 caught as never having run ──────────────
+//
+// Both of these are the same mistake in two places: treating a missing input as a clean result.
+// `main()` already refused an empty RESOLVED for that reason. The reasoning was applied to one of
+// the two inputs, and the test suite guarded what the production path did not.
+
+test("an empty taught set is refused, not passed as clean", () => {
+  // If skills/ is empty, unreadable, renamed, or the extractor breaks, the gate would otherwise
+  // report success having verified nothing — which is the vacuity this whole item removes.
+  const result = coverage(new Set(), new Map(), new Map([["@theokit/sdk", "4.60.0"]]));
+
+  assert.equal(result.ok, false);
+  assert.equal(result.problems.length, 1);
+  assert.equal(result.problems[0].kind, "empty-corpus");
+});
+
+test("a resolved token carrying no version is surfaced, not silently dropped", () => {
+  // Dropping it made the package report `not-resolved`, whose remedy is "add it to
+  // TAUGHT_PACKAGES" — a confident wrong instruction, since it is already there.
+  const resolved = parseResolved("@theokit/sdk @theokit/di@0.2.0 broken@");
+
+  assert.equal(resolved.get("@theokit/di"), "0.2.0");
+  assert.deepEqual(resolved.malformed, ["@theokit/sdk", "broken@"]);
+  assert.equal(resolved.has("@theokit/sdk"), false);
+});

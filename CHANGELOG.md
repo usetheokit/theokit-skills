@@ -17,6 +17,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Changed
 
+- The coverage gate refuses two shapes of missing input instead of reporting them clean: an empty
+  skills corpus (the extractor broke, or `skills/` moved) and a resolved-version list carrying a
+  token with no version. The second mattered most: a truncated token used to be dropped silently, so
+  the package it named was reported as "not in the install list" and the reader was told to add
+  something that was already there. A confident wrong instruction costs more than a refusal. (B-010)
+
 - **The job's `taught-surface-coverage: 7/7` was vacuous, and had been since it was written.**
   Measured on a dispatched run: with the install list shrunk to a single package it still reported
   7/7, because `npm install --no-save <pkg>` also installs `package.json`'s dependencies and all

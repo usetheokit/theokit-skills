@@ -39,14 +39,26 @@ export function installedVersions(names, root = process.cwd()) {
   return found;
 }
 
-/** Parse `@scope/name@1.2.3 other@4.5.6` into a Map. The separator is the LAST `@`, not the first. */
+/**
+ * Parse `@scope/name@1.2.3 other@4.5.6` into a Map. The separator is the LAST `@`, not the first.
+ *
+ * A token carrying no version is NOT dropped. Dropping it made the package report `not-resolved`,
+ * whose remedy is "add it to TAUGHT_PACKAGES" — a confident wrong instruction, since it is already
+ * there. The Map carries a `malformed` array so the caller can say so instead of guessing.
+ */
 export function parseResolved(line) {
   const out = new Map();
+  const malformed = [];
   for (const token of (line ?? "").trim().split(/\s+/).filter(Boolean)) {
     const at = token.lastIndexOf("@");
-    if (at <= 0) continue;
-    out.set(token.slice(0, at), token.slice(at + 1));
+    const version = at > 0 ? token.slice(at + 1) : "";
+    if (at <= 0 || version === "") {
+      malformed.push(token);
+      continue;
+    }
+    out.set(token.slice(0, at), version);
   }
+  out.malformed = malformed;
   return out;
 }
 
@@ -68,6 +80,18 @@ export function parseResolved(line) {
  */
 export function coverage(taught, installed, resolved) {
   const problems = [];
+
+  // An empty corpus is not "nothing to check" — it is the corpus missing. Reporting it clean is the
+  // same mistake as reporting an empty `resolved` clean, in the other input. EC-1.
+  if (taught.size === 0) {
+    return {
+      taught: 0,
+      installed: installed.size,
+      problems: [{ name: "(the skills corpus)", kind: "empty-corpus" }],
+      ok: false,
+    };
+  }
+
   for (const name of [...taught].sort()) {
     const want = resolved.get(name);
     const onDisk = installed.get(name);
@@ -83,6 +107,8 @@ const REMEDY = {
     "not in TAUGHT_PACKAGES — whatever is on disk came from the lockfile, so this run never asked the registry about it",
   "not-installed": "resolved but absent from node_modules — the install did not produce it",
   "shadowed": "present at a different version than resolved — the lockfile won over @latest",
+  "empty-corpus":
+    "no skill teaches any @theokit package — the corpus is empty, unreadable, or the extractor broke. Refusing to report a clean result over nothing.",
 };
 
 function main() {
@@ -97,6 +123,16 @@ function main() {
 
   // An empty `resolved` is not "nothing to check" — it is the input missing. Treating it as clean
   // is the vacuity that caused this file to be rewritten, so it fails instead.
+  if (resolved.malformed?.length) {
+    console.error("");
+    console.error("BOOKKEEPING MISMATCH — this is not API drift.");
+    console.error("  The install step's resolved output carries token(s) with no version:");
+    for (const token of resolved.malformed) console.error(`    ${token}`);
+    console.error("  Nothing can be verified against a truncated list, so this fails rather than");
+    console.error("  reporting the packages it cannot see as merely absent from TAUGHT_PACKAGES.");
+    return 1;
+  }
+
   if (resolved.size === 0) {
     console.error("");
     console.error("BOOKKEEPING MISMATCH — this is not API drift.");
