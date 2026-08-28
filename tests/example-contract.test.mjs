@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, renameSync } from "node:fs";
+import { mkdirSync, mkdtempSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
 
 import { checkExample } from "../lib/example-contract.mjs";
 import { makeExample } from "./_fixture.mjs";
@@ -99,4 +100,31 @@ test("a @theokit devDependency with a range is reported too", () => {
   });
 
   assert.ok(rules(dir).includes("exact-pin"));
+});
+
+test("malformed JSON in skill.json is reported as a violation, not thrown", () => {
+  const dir = makeExample((files) => { files["skill.json"] = "{ not json"; });
+
+  assert.ok(rules(dir).includes("invalid-json"));
+});
+
+test("malformed JSON in package.json is reported as a violation, not thrown", () => {
+  const dir = makeExample((files) => { files["package.json"] = "{ not json"; });
+
+  assert.ok(rules(dir).includes("invalid-json"));
+});
+
+test("malformed JSON in tsconfig.json is reported as a violation, not thrown", () => {
+  const dir = makeExample((files) => { files["tsconfig.json"] = "{ not json"; });
+
+  assert.ok(rules(dir).includes("invalid-json"));
+});
+
+test("an example directory with nothing in it reports every missing file and does not throw", () => {
+  const empty = mkdtempSync(join(tmpdir(), "theokit-empty-example-"));
+  const found = checkExample(empty);
+
+  assert.ok(found.length > 0);
+  assert.ok(found.every((violation) => typeof violation.rule === "string"));
+  assert.ok(found.some((violation) => violation.rule === "required-files"));
 });
