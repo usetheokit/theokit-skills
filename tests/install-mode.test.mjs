@@ -8,9 +8,9 @@
  * Run: `npm test` (node --test, zero dependencies).
  */
 import assert from "node:assert/strict";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, sep } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { after, test } from "node:test";
 
 import { isStableSource, linkSpec, place, currentMode } from "../lib/install-mode.mjs";
@@ -158,4 +158,98 @@ test("currentMode reports how a path was installed", () => {
   const dest = join(root, ".agents", "skills", "s");
   place(source, dest, { preferLink: false });
   assert.equal(currentMode(dest), "copy");
+});
+
+/** Two distinct sources and a destination, each in a scratch root the suite cleans up. */
+function twoSources() {
+  const root = scratch();
+  const a = join(root, "package-a", "theokit-x");
+  const b = join(root, "package-b", "theokit-x");
+  mkdirSync(a, { recursive: true });
+  mkdirSync(b, { recursive: true });
+  writeFileSync(join(a, "SKILL.md"), "from a");
+  writeFileSync(join(b, "SKILL.md"), "from b");
+  return { source: { a, b }, dest: join(root, "project", ".agents", "skills", "theokit-x") };
+}
+
+// ── B-011: `alreadyLinked` decided a real thing and nothing asserted it ───────────────────────────
+//
+// Seven mutants survive at lib/install-mode.mjs:58-61 — the `isSymbolicLink()` check and the
+// `resolve(...) === resolve(target)` comparison. Nothing in the suite distinguished a link pointing
+// at the CURRENT package from one pointing at an older checkout, and `place()` uses that answer to
+// decide whether a re-run replaces the link.
+//
+// The contract asserted here is the one MEASURED, not the one the plan first assumed: without
+// `--force` a link elsewhere is left alone, because that is what `--force` is for.
+
+test("a link already pointing at the right target is left alone", () => {
+  const { source, dest } = twoSources();
+  assert.deepEqual(place(source.a, dest, { preferLink: true }), {
+    mode: "link",
+    changed: true,
+    linkFailed: false,
+  });
+
+  assert.deepEqual(place(source.a, dest, { preferLink: true }), {
+    mode: "link",
+    changed: false,
+    linkFailed: false,
+  });
+});
+
+test("a link pointing somewhere else is left alone without --force", () => {
+  const { source, dest } = twoSources();
+  place(source.a, dest, { preferLink: true });
+
+  const result = place(source.b, dest, { preferLink: true });
+
+  assert.equal(result.changed, false, "--force is what replaces what is already there");
+  assert.equal(
+    resolve(dirname(dest), readlinkSync(dest)),
+    resolve(source.a),
+    "and it still points at the old target",
+  );
+});
+
+test("a link pointing somewhere else IS replaced with --force", () => {
+  const { source, dest } = twoSources();
+  place(source.a, dest, { preferLink: true });
+
+  const result = place(source.b, dest, { preferLink: true, force: true });
+
+  assert.equal(result.changed, true);
+  assert.equal(resolve(dirname(dest), readlinkSync(dest)), resolve(source.b));
+});
+
+test("a plain directory is not mistaken for a link", () => {
+  const { source, dest } = twoSources();
+  mkdirSync(dest, { recursive: true });
+  writeFileSync(join(dest, "already-here.md"), "x");
+
+  const result = place(source.a, dest, { preferLink: true });
+
+  assert.equal(result.mode, "copy", "an existing directory is reported as what it is");
+  assert.equal(result.changed, false);
+});
+
+test("a stale link and a correct one are reported identically — pinned, not endorsed", () => {
+  // F-2 (/review, LOW): `place()` returns a byte-identical `{mode:"link", changed:false}` whether the
+  // existing link is correct or points at a different package, and the stale case keeps serving the
+  // old content. The reviewer confirmed the reading is fair — `--help` says `--force  replace what is
+  // already there`, so leaving it alone IS the contract — and then found that nothing pinned the
+  // reporting half, so the ambiguity could be made worse without a test noticing.
+  //
+  // This asserts the CURRENT behaviour so a change to it is deliberate. It does not endorse it.
+  const { source, dest } = twoSources();
+  place(source.a, dest, { preferLink: true });
+
+  const correct = place(source.a, dest, { preferLink: true });
+  const stale = place(source.b, dest, { preferLink: true });
+
+  assert.deepEqual(stale, correct, "identical today — if this ever differs, it was a decision");
+  assert.equal(
+    readFileSync(join(dest, "SKILL.md"), "utf8"),
+    "from a",
+    "and the stale case keeps serving the old content, which is what --check exists to catch",
+  );
 });
