@@ -4,7 +4,8 @@
   "description": "Installs the TheoKit ecosystem agent skills into every AI coding tool you use \u2014 Claude Code, OpenAI Codex, Gemini CLI, GitHub Copilot, Zed, Devin Desktop \u2014 on Windows, macOS and Linux. Zero dependencies; links where that follows your lockfile, copies where it cannot.",
   "type": "module",
   "bin": {
-    "theokit-skills": "./bin/install.mjs"
+    "theokit-skills": "./bin/install.mjs",
+    "theokit-check-example": "./bin/check-example.mjs"
   },
   "files": [
     "bin",
