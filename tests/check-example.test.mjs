@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -40,4 +40,44 @@ test("exits 1 when the tree contains no example, rather than reporting success o
 
   assert.equal(code, 1);
   assert.match(out, /no example/i);
+});
+
+test("an example nested inside another example is still discovered", () => {
+  const outer = makeExample();
+  const root = resolve(outer, "..", "..");
+  const inner = join(outer, "nested", "capabilities", "memory");
+  mkdirSync(inner, { recursive: true });
+  writeFileSync(join(inner, "skill.json"), "{}");
+
+  const { out } = run(root);
+
+  assert.match(out, /nested\/capabilities\/memory/);
+});
+
+test("a root path that does not exist is named, not dumped as a stack trace", () => {
+  const { code, out } = run(join(tmpdir(), "theokit-absent-root-xyz"));
+
+  assert.equal(code, 1);
+  assert.match(out, /does not exist/);
+  assert.doesNotMatch(out, /at readdirSync/);
+});
+
+test("an example whose check throws is named, and the run continues", () => {
+  const first = makeExample();
+  const root = resolve(first, "..", "..");
+  // A .gitignore that is a directory makes readFileSync raise EISDIR, which checkExample re-throws.
+  rmSync(join(first, ".gitignore"));
+  mkdirSync(join(first, ".gitignore"));
+
+  const { code, out } = run(root);
+
+  assert.equal(code, 1);
+  assert.match(out, /ERROR capabilities\/memory/);
+  assert.doesNotMatch(out, /at checkExample/);
+});
+
+test("an example passed directly as the root is named rather than printed blank", () => {
+  const { out } = run(makeExample());
+
+  assert.match(out, /^(ok|FAIL)\s+memory/m);
 });

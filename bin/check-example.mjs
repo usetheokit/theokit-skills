@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, readdirSync, statSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 
 import { checkExample } from "../lib/example-contract.mjs";
 
@@ -8,10 +8,7 @@ import { checkExample } from "../lib/example-contract.mjs";
 function findExamples(root) {
   const found = [];
   const walk = (current) => {
-    if (existsSync(join(current, "skill.json"))) {
-      found.push(current);
-      return;
-    }
+    if (existsSync(join(current, "skill.json"))) found.push(current);
     for (const entry of readdirSync(current)) {
       if (entry === "node_modules" || entry.startsWith(".")) continue;
       const path = join(current, entry);
@@ -23,6 +20,17 @@ function findExamples(root) {
 }
 
 const root = resolve(process.argv[2] ?? ".");
+
+if (!existsSync(root)) {
+  console.error(`${root} does not exist`);
+  process.exit(1);
+}
+
+if (!statSync(root).isDirectory()) {
+  console.error(`${root} is not a directory`);
+  process.exit(1);
+}
+
 const examples = findExamples(root);
 
 if (examples.length === 0) {
@@ -32,8 +40,19 @@ if (examples.length === 0) {
 
 let failed = 0;
 for (const dir of examples) {
-  const name = relative(root, dir).split("\\").join("/");
-  const violations = checkExample(dir);
+  const name = relative(root, dir).split("\\").join("/") || basename(dir);
+
+  let violations;
+  try {
+    violations = checkExample(dir);
+  } catch (error) {
+    // checkExample reports contract problems as violations and re-throws everything else. An
+    // I/O fault in one example must not hide the state of every example after it.
+    failed += 1;
+    console.log(`ERROR ${name}`);
+    console.log(`       ${error.message}`);
+    continue;
+  }
 
   if (violations.length === 0) {
     console.log(`ok   ${name}`);
