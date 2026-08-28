@@ -66,7 +66,10 @@ export function liveTypescriptBlocks(text) {
   // Truncation is worse than dropping: a dropped block leaves a count short, a truncated one is a
   // wrong answer wearing a right one's clothes. (B-024, EC-1.)
   for (const match of text.matchAll(fencePattern())) {
-    const language = (match[3] ?? "").toLowerCase();
+    // Group 3 is the whole info string now, not just its first word — the pattern stopped splitting
+    // it because `(\w+)?[^\n]*` overlapped and backtracked. CommonMark says the language is the
+    // first word of the info string, so it is taken here, where saying so is cheap.
+    const language = (match[3] ?? "").trim().split(/[^\w]/)[0].toLowerCase();
     if (language !== "typescript" && language !== "ts") continue;
     if (skip.some(([from, to]) => match.index >= from && match.index < to)) continue;
     // `startLine` is the 1-based line of the block's first BODY line in `text`. Kept rather than
@@ -87,7 +90,7 @@ export function liveTypescriptBlocks(text) {
  * and B-003's review found again in the fence reader; a third instance in the same file would be
  * hard to call an accident.
  *
- * Capture groups: 1 indent, 2 the fence run, 3 the language, 4 the body.
+ * Capture groups: 1 indent, 2 the fence run, 3 the info string, 4 the body.
  */
 function fencePattern() {
   // The trailing `` `* `` is load-bearing: CommonMark lets a closing fence be LONGER than the
@@ -95,7 +98,12 @@ function fencePattern() {
   // inner ```. A `~*` sat beside it with no such motivation — a mixed closer is not a valid fence
   // pair, and accepting `` ```~~~ `` as a close was an unexplained clause in the one regex whose
   // three previous unexplained clauses are the subject of this change. Removed. (F-8, /review.)
-  return /^([ \t]*)(`{3,}|~{3,})[ \t]*(\w+)?[^\n]*\n([\s\S]*?)^[ \t]*\2`*[ \t]*$/gm;
+  //
+  // `([^\n]*)` captures the WHOLE info string; the language is taken from it in code. It used to be
+  // `(\w+)?[^\n]*`, and those two overlap on every word character — the classic ambiguity that makes
+  // a match backtrack super-linearly on a long info line. One capture, no ambiguity, and the caller
+  // reads the language from it. (SonarQube S5852.)
+  return /^([ \t]*)(`{3,}|~{3,})[ \t]*([^\n]*)\n([\s\S]*?)^[ \t]*\2`*[ \t]*$/gm;
 }
 
 function deprecatedRanges(text) {
@@ -118,68 +126,74 @@ function deprecatedRanges(text) {
  * Imports inside a deprecated fence are excluded unless `includeDeprecated` is passed — see the
  * module header for why that is the default rather than the option.
  */
+/** Split a braced import list into the local names it binds. */
+function bracedNames(list) {
+  return (list ?? "")
+    .split(",")
+    .map((n) => n.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0]?.trim())
+    .filter((n) => n && /^[A-Za-z_$][\w$]*$/.test(n));
+}
+
+/**
+ * The five import forms this corpus can teach, each as (pattern, reader).
+ *
+ * ONE TABLE, NOT FIVE LOOPS. The loops were identical apart from how names come out of the match,
+ * and stacking them took `importsIn` to a cognitive complexity of 28 against a limit of 15
+ * (SonarQube S3776) — which is the measurable version of the thing that actually matters: the four
+ * forms added after the first were each a separate `/review` finding, and the next one would have
+ * been a sixth near-copy of the same six lines. A table makes adding a form one row.
+ *
+ * Every pattern except the first is anchored to the start of a line. That anchor is the whole
+ * difference between a statement and prose: "Do NOT import them from `@theokit/sdk/internal/…`"
+ * matched a first draft and produced a phantom taught symbol.
+ */
+const IMPORT_FORMS = [
+  // Braced named imports — the overwhelming majority, and the only form the corpus uses today (90
+  // @theokit-scoped, 110 counting every specifier; both measured). The oracle in
+  // skills-module.test.mjs asserts the scoped number, so a raw grep finding 110 is not a
+  // contradiction.
+  [
+    /import\s*(?:type\s+)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/g,
+    (m) => [m[2], bracedNames(m[1])],
+  ],
+  // A default or namespace binding, optionally followed by a braced list. The trailing
+  // `(?:,\s*\{([^}]*)\})?` is what keeps a MIXED import whole: `import d, { N } from "…"` used to
+  // be dropped ENTIRELY — including the braced half, which IS the form this corpus uses — because
+  // the comma broke the braced pattern and the bare-identifier pattern alike. (F-2, /review.)
+  [
+    /^[ \t]*(?:import|export)\s+(?:type\s+)?(?:(\*\s*as\s+[A-Za-z_$][\w$]*)|([A-Za-z_$][\w$]*))(?:\s*,\s*\{([^}]*)\})?\s+from\s*["']([^"']+)["']/gm,
+    (m) => [
+      m[4],
+      [(m[1] ?? m[2] ?? "").replace(/^\*\s*as\s+/, "").trim(), ...bracedNames(m[3])].filter(Boolean),
+    ],
+  ],
+  // `export { X } from "…"` — a re-export with braces, which the first form skips because it
+  // requires the literal `import`.
+  [
+    /^[ \t]*export\s*\{([^}]*)\}\s*from\s*["']([^"']+)["']/gm,
+    (m) => [m[2], bracedNames(m[1])],
+  ],
+  // `export * from "…"` binds no local name, so no identifier pattern reaches it. (F-1.)
+  [/^[ \t]*export\s*\*\s*from\s*["']([^"']+)["']/gm, (m) => [m[1], ["*"]]],
+  // A side-effect import binds nothing at all — `import "@theokit/sdk/register";`. It teaches a
+  // SPECIFIER without teaching a symbol, and the specifier is what the drift and resolution gates
+  // check. (F-1.) `["'];?` and not `["']\s*;?`: two space-matching quantifiers either side of an
+  // optional `;` split the same run many ways, which is the ambiguity S5852 names.
+  [/^[ \t]*import\s*["']([^"']+)["'];?[ \t]*$/gm, (m) => [m[1], []]],
+];
+
 export function importsIn(text, { includeDeprecated = false } = {}) {
   const skip = includeDeprecated ? [] : deprecatedRanges(text);
   const found = [];
-  // Braced named imports — the overwhelming majority, and the only form the corpus uses today (90 of
-  // them @theokit-scoped, 110 counting every specifier — both measured. The oracle in
-  // skills-module.test.mjs asserts the scoped number, so a reader reconciling it against a raw
-  // grep finds 110; the scope was missing from this sentence and had to be re-derived..
-  for (const m of text.matchAll(/import\s*(?:type\s+)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/g)) {
-    if (skip.some(([a, b]) => m.index >= a && m.index < b)) continue;
-    const names = m[1]
-      .split(",")
-      .map((s) => s.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0]?.trim())
-      .filter((n) => n && /^[A-Za-z_$][\w$]*$/.test(n));
-    if (names.length > 0) found.push({ specifier: m[2], names });
-  }
-
-  // Default, namespace, and re-export. Zero occurrences in the corpus today — built because these
-  // feed gates, and a form the reader drops makes every one of them report GREEN over a symbol
-  // nobody verified. (B-017.)
-  //
-  // Anchored to the start of a line, which is the whole difference between a statement and prose:
-  // "Do NOT import them from `@theokit/sdk/internal/persistence`" matched a first draft and produced
-  // a phantom taught symbol, which would fail a gate against a package that never exported it.
-  // A default or namespace binding, optionally followed by a braced list. The `(?:,\s*\{([^}]*)\})?`
-  // is what keeps a MIXED import whole: `import d, { N } from "…"` used to be dropped ENTIRELY —
-  // including the braced half, which IS the form this corpus uses — because the comma broke the
-  // braced pattern and the bare-identifier pattern alike. (F-2, /review.)
-  const BINDING = /^[ \t]*(?:import|export)\s+(?:type\s+)?(?:(\*\s*as\s+[A-Za-z_$][\w$]*)|([A-Za-z_$][\w$]*))(?:\s*,\s*\{([^}]*)\})?\s+from\s*["']([^"']+)["']/gm;
-  for (const m of text.matchAll(BINDING)) {
-    if (skip.some(([a, b]) => m.index >= a && m.index < b)) continue;
-    const names = [(m[1] ?? m[2] ?? "").replace(/^\*\s*as\s+/, "").trim()];
-    for (const n of (m[3] ?? "").split(",")) {
-      const clean = n.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0]?.trim();
-      if (clean && /^[A-Za-z_$][\w$]*$/.test(clean)) names.push(clean);
+  for (const [pattern, read] of IMPORT_FORMS) {
+    for (const m of text.matchAll(pattern)) {
+      if (skip.some(([a, b]) => m.index >= a && m.index < b)) continue;
+      const [specifier, names] = read(m);
+      // A form that binds no name is still a taught SPECIFIER — `export *` and the side-effect
+      // import both reach here with an empty or symbolic list, and dropping them on `names.length`
+      // is how the reader lost them in the first place.
+      if (specifier) found.push({ specifier, names });
     }
-    const kept = names.filter(Boolean);
-    if (kept.length > 0) found.push({ specifier: m[4], names: kept });
-  }
-
-  // `export * from "…"` binds no local name, so no identifier pattern reaches it. (F-1.)
-  for (const m of text.matchAll(/^[ \t]*export\s*\*\s*from\s*["']([^"']+)["']/gm)) {
-    if (skip.some(([a, b]) => m.index >= a && m.index < b)) continue;
-    found.push({ specifier: m[1], names: ["*"] });
-  }
-
-  // A side-effect import binds nothing at all — `import "@theokit/sdk/register";`. It teaches a
-  // SPECIFIER without teaching a symbol, and the specifier is what the drift and resolution gates
-  // check. (F-1.)
-  for (const m of text.matchAll(/^[ \t]*import\s*["']([^"']+)["']\s*;?[ \t]*$/gm)) {
-    if (skip.some(([a, b]) => m.index >= a && m.index < b)) continue;
-    found.push({ specifier: m[1], names: [] });
-  }
-
-  // `export { X } from "…"` — a re-export with braces, which the first loop skips because it
-  // requires the literal `import`.
-  for (const m of text.matchAll(/^[ \t]*export\s*\{([^}]*)\}\s*from\s*["']([^"']+)["']/gm)) {
-    if (skip.some(([a, b]) => m.index >= a && m.index < b)) continue;
-    const names = m[1]
-      .split(",")
-      .map((n) => n.trim().split(/\s+as\s+/)[0]?.trim())
-      .filter((n) => n && /^[A-Za-z_$][\w$]*$/.test(n));
-    if (names.length > 0) found.push({ specifier: m[2], names });
   }
   return found;
 }

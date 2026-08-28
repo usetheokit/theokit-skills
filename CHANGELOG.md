@@ -57,6 +57,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   `lib/` path in a comment was required to join the mutation run, where it cannot kill a single
   mutant — slowing every future audit for a fictional reason. (B-003)
 
+- The five import forms the corpus reader knows are one table rather than five near-identical loops.
+  Each form after the first arrived as its own review finding, and the sixth would have been another
+  copy of the same six lines. (B-017)
+
 ### Added
 
 ### Changed
