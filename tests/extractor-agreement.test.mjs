@@ -15,7 +15,7 @@
  * Run: `npm test` (node --test).
  */
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
@@ -64,20 +64,37 @@ test("no test file carries its own import extractor", () => {
   // Recursive. The first version listed `testsDir` only, so `tests/lint/no-ptbr.test.mjs` — a test
   // file inside this guard's own declared scope — was never read. A guard that silently excludes
   // part of what it claims to cover reports absence where it never looked. (F-dt-2, /review of B-010.)
-  const walk = (dir, prefix = "") => {
+  // `suffix` differs by tree: under `tests/` only test files can carry an extractor, but under
+  // `scripts/` nothing is a test — filtering on `.test.mjs` there scanned zero files and the
+  // widening did nothing. Caught by the control: a planted extractor in `scripts/` was not reported.
+  const walk = (dir, suffix, prefix = "") => {
+    if (!existsSync(dir)) return;
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
-        walk(join(dir, entry.name), rel);
+        walk(join(dir, entry.name), suffix, rel);
         continue;
       }
-      if (!entry.name.endsWith(".test.mjs")) continue;
+      if (!entry.name.endsWith(suffix)) continue;
       // The agreement test itself names the pattern in prose and in this regex; skip only itself.
       if (rel === "extractor-agreement.test.mjs") continue;
-      if (OWN_EXTRACTOR.test(readFileSync(join(dir, entry.name), "utf8"))) offenders.push(rel);
+      const text = readFileSync(join(dir, entry.name), "utf8");
+      if (!OWN_EXTRACTOR.test(text)) continue;
+      // One legitimate exception, and it must be declared on the line rather than assumed: a test
+      // that proves a widening is ADDITIVE has to count independently, because verifying a reader
+      // with itself is the tautology B-008 removed. The marker makes the exception greppable and
+      // visible in a diff — the same shape as `ADR-DISMISS-SOFT-CAP` and `zizmor: ignore` elsewhere
+      // here. A silent skip would let any violation wear the same excuse.
+      if (/extractor-oracle:/.test(text)) continue;
+      offenders.push(rel);
     }
   };
-  walk(testsDir);
+  // `tests/` AND `scripts/`. B-003 created `scripts/taught-coverage.mjs`, the first corpus reader
+  // outside this tree — and cited THIS guard as the reason not to duplicate the extractor, while
+  // placing a consumer where the guard cannot see it. It happens to use the shared module; the guard
+  // is what makes that a guarantee instead of a habit. (B-016.)
+  walk(testsDir, ".test.mjs");
+  walk(join(testsDir, "..", "scripts"), ".mjs", "scripts");
   assert.deepEqual(
     offenders,
     [],

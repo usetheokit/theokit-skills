@@ -4,6 +4,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Fixed
+
+- The guard that forbids a second reader of the skills corpus now covers `scripts/` as well as
+  `tests/`. The script that compares taught packages against installed ones lives there and reads the
+  corpus, and the guard could not see it — it happened to use the shared module, which is a habit
+  rather than a guarantee. (B-016)
+
+- Default imports, namespace imports and re-exports count as taught. Only braced named imports did,
+  so `import theokit from "@theokit/sdk"` in a skill would have been invisible to every gate built on
+  that reader — the drift check, the resolution check and the taught-surface gate would each have
+  reported green over a symbol nobody verified. Zero such imports exist today; the forms are read now
+  so the day one appears is not the day nobody notices. (B-017)
+
+- Indented, tilde and four-backtick fenced examples are read. The four-backtick case was the worst of
+  the three and the opposite of what was expected: it was not skipped but silently **truncated** —
+  matched as three backticks plus a stray one and closed at the inner fence — so half an example
+  compiled and the skill was reported as compiling. Four backticks exist precisely to wrap examples
+  containing backticks, which is exactly when that goes unnoticed. (B-024)
+
+- Anti-examples stay excluded in all of those forms. The deprecation scan and the block reader each
+  had their own fence pattern, and widening only one would have made a skill fail for correctly
+  showing what not to do. One pattern now, used by both. (B-024)
+
 ### Added
 
 ### Changed

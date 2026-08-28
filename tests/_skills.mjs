@@ -58,22 +58,44 @@ export const DEPRECATED_FENCE =
 export function liveTypescriptBlocks(text) {
   const skip = deprecatedRanges(text);
   const blocks = [];
-  for (const match of text.matchAll(/^```(\w+)?[^\n]*\n([\s\S]*?)^```/gm)) {
-    const language = (match[1] ?? "").toLowerCase();
+  // The fence may be indented, may use tildes, and may be longer than three characters — and the
+  // closing fence must be the SAME character repeated at least as many times. The old pattern was
+  // `^```` anchored flush left, which did three different things to three forms: it dropped indented
+  // and `~~~` fences, and it TRUNCATED four-backtick ones — matching ``` plus a stray backtick and
+  // closing at the inner ```, so half an example compiled and the skill was reported as compiling.
+  // Truncation is worse than dropping: a dropped block leaves a count short, a truncated one is a
+  // wrong answer wearing a right one's clothes. (B-024, EC-1.)
+  for (const match of text.matchAll(fencePattern())) {
+    const language = (match[3] ?? "").toLowerCase();
     if (language !== "typescript" && language !== "ts") continue;
     if (skip.some(([from, to]) => match.index >= from && match.index < to)) continue;
     // `startLine` is the 1-based line of the block's first BODY line in `text`. Kept rather than
     // discarded: a gate that compiles concatenated blocks reports diagnostics against a virtual
     // file, and without this the address it prints exists nowhere the reader can look.
     const beforeBody = text.slice(0, match.index + match[0].indexOf("\n") + 1);
-    blocks.push({ code: match[2], startLine: beforeBody.split("\n").length });
+    blocks.push({ code: match[4], startLine: beforeBody.split("\n").length });
   }
   return blocks;
 }
 
+/**
+ * Any fenced block: optional indent, three or more backticks OR tildes, closed by the same run.
+ *
+ * ONE definition, used by both the deprecation scan and the block reader. They had one each, and
+ * widening only the reader made anti-examples in the new forms COMPILE — a skill reported broken for
+ * correctly showing what not to do. That is the same divergence B-008 removed for import extractors
+ * and B-003's review found again in the fence reader; a third instance in the same file would be
+ * hard to call an accident.
+ *
+ * Capture groups: 1 indent, 2 the fence run, 3 the language, 4 the body.
+ */
+function fencePattern() {
+  return /^([ \t]*)(`{3,}|~{3,})[ \t]*(\w+)?[^\n]*\n([\s\S]*?)^[ \t]*\2`*~*[ \t]*$/gm;
+}
+
 function deprecatedRanges(text) {
   const ranges = [];
-  for (const m of text.matchAll(/```[a-z]*\n([\s\S]*?)```/g)) {
+  for (const m of text.matchAll(fencePattern())) {
     const preceding = text
       .slice(Math.max(0, m.index - 200), m.index)
       .split("\n")
@@ -94,11 +116,38 @@ function deprecatedRanges(text) {
 export function importsIn(text, { includeDeprecated = false } = {}) {
   const skip = includeDeprecated ? [] : deprecatedRanges(text);
   const found = [];
+  // Braced named imports — the overwhelming majority, and the only form the corpus uses today (90 of
+  // them, measured).
   for (const m of text.matchAll(/import\s*(?:type\s+)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/g)) {
     if (skip.some(([a, b]) => m.index >= a && m.index < b)) continue;
     const names = m[1]
       .split(",")
       .map((s) => s.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0]?.trim())
+      .filter((n) => n && /^[A-Za-z_$][\w$]*$/.test(n));
+    if (names.length > 0) found.push({ specifier: m[2], names });
+  }
+
+  // Default, namespace, and re-export. Zero occurrences in the corpus today — built because these
+  // feed gates, and a form the reader drops makes every one of them report GREEN over a symbol
+  // nobody verified. (B-017.)
+  //
+  // Anchored to the start of a line, which is the whole difference between a statement and prose:
+  // "Do NOT import them from `@theokit/sdk/internal/persistence`" matched a first draft and produced
+  // a phantom taught symbol, which would fail a gate against a package that never exported it.
+  const STATEMENT = /^[ \t]*(?:import|export)\s+(?:type\s+)?(?:(\*\s*as\s+[A-Za-z_$][\w$]*)|([A-Za-z_$][\w$]*))\s+from\s*["']([^"']+)["']/gm;
+  for (const m of text.matchAll(STATEMENT)) {
+    if (skip.some(([a, b]) => m.index >= a && m.index < b)) continue;
+    const name = (m[1] ?? m[2] ?? "").replace(/^\*\s*as\s+/, "").trim();
+    if (name) found.push({ specifier: m[3], names: [name] });
+  }
+
+  // `export { X } from "…"` — a re-export with braces, which the first loop skips because it
+  // requires the literal `import`.
+  for (const m of text.matchAll(/^[ \t]*export\s*\{([^}]*)\}\s*from\s*["']([^"']+)["']/gm)) {
+    if (skip.some(([a, b]) => m.index >= a && m.index < b)) continue;
+    const names = m[1]
+      .split(",")
+      .map((n) => n.trim().split(/\s+as\s+/)[0]?.trim())
       .filter((n) => n && /^[A-Za-z_$][\w$]*$/.test(n));
     if (names.length > 0) found.push({ specifier: m[2], names });
   }
