@@ -1,6 +1,6 @@
 {
   "name": "@theokit/skills",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "Installs the TheoKit ecosystem agent skills into every AI coding tool you use \u2014 Claude Code, OpenAI Codex, Gemini CLI, GitHub Copilot, Zed, Devin Desktop \u2014 on Windows, macOS and Linux. Zero dependencies; links where that follows your lockfile, copies where it cannot.",
   "type": "module",
   "bin": {

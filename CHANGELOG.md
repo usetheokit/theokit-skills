@@ -4,6 +4,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [0.9.2] - 2026-08-28
+
+### Changed
+
+- A change to the scheduled drift workflow is now exercised before it merges. It was the only
+  workflow here with no `pull_request` trigger, so a change to it first ran at 06:00 UTC — two
+  defects landed in it in one day and CI caught neither. Its alerting invariants are asserted by a
+  test that runs on every pull request, with no registry access and no repository admin. (B-014)
+
+- The `extractor-oracle:` escape is scoped to the lines around the extractor it excuses rather than
+  to the whole file. One marker exempted every extractor in the file that carried it, while the
+  comment beside it stated the exception had to be declared on the line — honest about why and wrong
+  about where. (B-016)
+
+
 ### Fixed
 
 - The guard that forbids a second reader of the skills corpus now covers `scripts/` as well as
@@ -60,28 +87,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - The five import forms the corpus reader knows are one table rather than five near-identical loops.
   Each form after the first arrived as its own review finding, and the sixth would have been another
   copy of the same six lines. (B-017)
-
-### Added
-
-### Changed
-
-- A change to the scheduled drift workflow is now exercised before it merges. It was the only
-  workflow here with no `pull_request` trigger, so a change to it first ran at 06:00 UTC — two
-  defects landed in it in one day and CI caught neither. Its alerting invariants are asserted by a
-  test that runs on every pull request, with no registry access and no repository admin. (B-014)
-
-- The `extractor-oracle:` escape is scoped to the lines around the extractor it excuses rather than
-  to the whole file. One marker exempted every extractor in the file that carried it, while the
-  comment beside it stated the exception had to be declared on the line — honest about why and wrong
-  about where. (B-016)
-
-### Deprecated
-
-### Removed
-
-### Fixed
-
-### Security
 
 ## [0.9.1] - 2026-08-28
 
