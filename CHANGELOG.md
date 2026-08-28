@@ -18,6 +18,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Fixed
+
+- **`--check` could report "up to date" over a tampered skill.** Installing for a second tool
+  replaced the manifest instead of adding to it, and since the manifest became the sole expectation,
+  the first tool's installation left the gate entirely. Reproduced: install for Codex, then for
+  Claude Code, edit a file under `.agents/skills/` — the answer was `up to date — 31` and exit 0. The
+  31 was true of the manifest and false of the tree. The manifest now merges by target and skill; a
+  version change still replaces wholesale. (B-002)
+
+- A manifest written on Windows reported every entry as missing when read on Linux. `relative()`
+  produces backslashes, and POSIX path joining treats them as part of a filename — while the
+  manifest is explicitly meant to be committed alongside the skills it describes, so reading it on
+  another operating system is the normal case. (B-002)
+
+- An unreadable file inside a skill directory aborted the install *after* every skill was placed and
+  *before* the manifest was written, leaving an installed tree that the next `--check` called "never
+  installed here". Such a file is now folded into the digest as the error it is — a real state of
+  the tree, and one the check should notice. (B-002)
+
 ### Changed
 
 - The README says what a skill is for. Measured: the skills teach 176 symbols across 29 subpaths

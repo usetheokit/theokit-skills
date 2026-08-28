@@ -213,3 +213,103 @@ test("a nested path cannot collide with a flat one that concatenates to the same
 
   assert.notEqual(digestOf(join(flat, "skill")), digestOf(join(nested, "skill")));
 });
+
+test("installing a second target does not drop the first from the manifest", () => {
+  // W-01, /review BLOCKER, reproduced before writing this: install for `agents`, then for `claude`,
+  // and the manifest held 31 `claude` entries. The `.agents/skills` install stayed on disk and left
+  // the gate's scope entirely — tampering with it produced `up to date — 31` and exit 0. The count
+  // was true of the manifest and false of the tree, which is the one thing a gate may never do.
+  //
+  // Created by making the manifest the sole expectation: before that, `--check` derived its
+  // expectation from detected targets and would at least have looked.
+  const root = scratch();
+  const agents = [{ skill: "theokit-x", target: "agents", path: "a/theokit-x", mode: "copy", digest: "d1" }];
+  const claude = [{ skill: "theokit-x", target: "claude", path: "c/theokit-x", mode: "copy", digest: "d2" }];
+
+  writeManifest(root, { version: "1.0.0", entries: agents });
+  writeManifest(root, { version: "1.0.0", entries: claude });
+
+  const merged = readManifest(root).entries;
+  assert.equal(merged.length, 2, "a second target must add, not replace");
+  assert.deepEqual(
+    merged.map((e) => e.target).sort(),
+    ["agents", "claude"],
+  );
+});
+
+test("re-installing the same target replaces its own entries, and only those", () => {
+  const root = scratch();
+  writeManifest(root, {
+    version: "1.0.0",
+    entries: [
+      { skill: "theokit-x", target: "agents", path: "a/theokit-x", mode: "copy", digest: "old" },
+      { skill: "theokit-y", target: "claude", path: "c/theokit-y", mode: "copy", digest: "keep" },
+    ],
+  });
+
+  writeManifest(root, {
+    version: "1.0.0",
+    entries: [{ skill: "theokit-x", target: "agents", path: "a/theokit-x", mode: "copy", digest: "new" }],
+  });
+
+  const entries = readManifest(root).entries;
+  assert.equal(entries.length, 2);
+  assert.equal(entries.find((e) => e.target === "agents").digest, "new");
+  assert.equal(entries.find((e) => e.target === "claude").digest, "keep", "another target is not collateral");
+});
+
+test("a version change replaces the manifest wholesale", () => {
+  // Merging across versions would keep entries describing a layout the new version may not produce.
+  // The schema's own contract is wipe-and-reinstall, and this is the same reasoning one field over.
+  const root = scratch();
+  writeManifest(root, {
+    version: "1.0.0",
+    entries: [{ skill: "theokit-x", target: "claude", path: "c/theokit-x", mode: "copy", digest: "old" }],
+  });
+
+  writeManifest(root, {
+    version: "2.0.0",
+    entries: [{ skill: "theokit-x", target: "agents", path: "a/theokit-x", mode: "copy", digest: "new" }],
+  });
+
+  const entries = readManifest(root).entries;
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].target, "agents");
+});
+
+test("a manifest path written on Windows resolves on POSIX", () => {
+  // W-05: `relative()` returns backslashes on Windows, and POSIX `join` treats them as part of a
+  // filename — so a manifest committed from a Windows checkout reports EVERY entry `missing` on a
+  // Linux runner. The module header says the file "is meant to be committed alongside the skills it
+  // describes", so cross-OS reading is the intended use, not an edge.
+  //
+  // This became reachable when `drift()` started resolving `entry.path`; before, the field was
+  // written and never read.
+  const root = scratch();
+  const skill = join(root, "a", "theokit-x");
+  mkdirSync(skill, { recursive: true });
+  writeFileSync(join(skill, "SKILL.md"), "instruction");
+
+  writeManifest(root, {
+    version: "1.0.0",
+    entries: [
+      // exactly what a Windows install writes
+      { skill: "theokit-x", target: "agents", path: "a\\theokit-x", mode: "copy", digest: digestOf(skill) },
+    ],
+  });
+
+  assert.equal(drift(root, { version: "1.0.0" }).kind, "current");
+});
+
+test("digestOf failing during install does not leave the tree without a manifest", () => {
+  // W-04: `digestOf` was called INSIDE the `writeManifest` argument, so a throw — a dangling child
+  // symlink, an unreadable file, a symlink cycle — happened after every skill was placed and before
+  // any manifest was written. Skills on disk, no manifest, and the next `--check` says "the skills
+  // were never installed here".
+  const root = scratch();
+  const skill = join(root, "a", "theokit-x");
+  mkdirSync(skill, { recursive: true });
+  symlinkSync(join(root, "gone"), join(skill, "dangling.md"));
+
+  assert.doesNotThrow(() => digestOf(skill), "an unreadable child must not abort the install");
+});
