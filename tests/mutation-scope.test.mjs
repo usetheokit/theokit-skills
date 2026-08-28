@@ -29,11 +29,19 @@ test("every test that exercises lib/ or bin/ is in the mutation script", () => {
     // only itself is what `extractor-agreement.test.mjs` does for the same reason.
     if (file === "mutation-scope.test.mjs") continue;
     const text = readFileSync(join(root, "tests", file), "utf8");
-    // by import, or by spawning the binary — `cli.test.mjs` does the second and no grep for
-    // `from "../bin/…"` would have seen it.
-    if (/from "\.\.\/(lib|bin)\//.test(text) || /join\([^)]*"(bin|lib)"/.test(text)) {
-      exercises.push(file);
-    }
+    // Three forms, because this repository already uses all three and a detector that knows two of
+    // them fails in the silent direction:
+    //   1. `from "../lib/x.mjs"`      — a direct import
+    //   2. `new URL("../bin/x.mjs")`  — how `taught-coverage.test.mjs` locates a CLI to spawn
+    //   3. `join(root, "bin", "x")`   — how `cli.test.mjs` does, and no path-string regex sees it
+    //
+    // (1) and (2) are both just "a string containing `lib/` or `bin/`", which over-matches prose.
+    // That asymmetry is deliberate: a false positive costs one line in `test:mutation` or one
+    // sentence of explanation, and a false negative is a mutation score that silently measures less
+    // than it claims. Measured on the current suite: zero false positives.
+    const pathLiteral = /["'`][^"'`]*(?:\.\.\/)?(?:lib|bin)\/[^"'`]*["'`]/;
+    const segments = /join\([^)]*["'`](?:bin|lib)["'`]/;
+    if (pathLiteral.test(text) || segments.test(text)) exercises.push(file);
   }
 
   assert.ok(exercises.length > 0, "no test exercises lib/ or bin/ — the detector is broken, not the suite");
