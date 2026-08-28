@@ -16,6 +16,65 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Security
 
+## [Unreleased]
+
+### Fixed
+
+- Two `.sort()` calls in the coverage script now carry explicit comparators. One of them sorted an
+  array of `[name, version]` pairs by the stringified pair rather than by name — correct today, and
+  wrong the moment one package name is a prefix of another and their versions differ. Found by
+  SonarQube on the release PR. (B-010)
+
+## [0.6.0] - 2026-08-27
+
+### Added
+
+- The nightly drift job now **fails** when a package the skills teach was not installed at the
+  version that run resolved from the registry. It names the package, both versions, and which of
+  three things went wrong — the package is not in the install list (so whatever is on disk came from
+  the lockfile), or it was resolved and never installed, or the lockfile shadowed the version that
+  was resolved. Each has a different fix, so they are reported differently. The failure says
+  `BOOKKEEPING MISMATCH — this is not API drift` in those words, and files no drift issue: someone
+  forgetting to update a list and a package removing an export are answered differently and must not
+  look alike. (B-010)
+
+
+### Changed
+
+- The two workflow steps that read the coverage now do genuinely different things. The reporting
+  step lists what is installed and cannot fail; the assertion step prints its verdict and fails on a
+  mismatch. Before this, one function did both and the reporting step — which is not given the
+  resolved-version list — exited 1 on **every run**, printing a misleading mismatch that
+  `continue-on-error` swallowed. A green job whose diagnostic step errored daily. (B-010)
+
+- The assertion's verdict reaches the log. It was being discarded, so the only number a reader saw
+  in a healthy run was the count of packages *present* — the measure this release replaced because
+  it cannot tell a verified package from one the lockfile supplied. (B-010)
+
+- The failure's closing advice is chosen by cause. It used to tell every failure to edit the install
+  list, which is the wrong instruction for two of the four causes and, for an empty corpus, points at
+  a file that cannot possibly help. (B-010)
+
+- The coverage gate refuses two shapes of missing input instead of reporting them clean: an empty
+  skills corpus (the extractor broke, or `skills/` moved) and a resolved-version list carrying a
+  token with no version. The second mattered most: a truncated token used to be dropped silently, so
+  the package it named was reported as "not in the install list" and the reader was told to add
+  something that was already there. A confident wrong instruction costs more than a refusal. (B-010)
+
+- **The job's `taught-surface-coverage: 7/7` was vacuous, and had been since it was written.**
+  Measured on a dispatched run: with the install list shrunk to a single package it still reported
+  7/7, because `npm install --no-save <pkg>` also installs `package.json`'s dependencies and all
+  seven taught packages are devDependencies. Six arrived from the lockfile at versions that by
+  construction cannot have moved — the exact gap the job exists to close, through a side door. One
+  of them, `@theokit/sdk-tools`, was a published release behind while being counted as covered. The
+  number now compares against what the run resolved, not against what happens to be on disk. (B-010)
+
+- The comparison moved out of an inline `node -e` inside the workflow and into
+  `scripts/taught-coverage.mjs`, with unit tests. A script embedded in YAML cannot be tested, and
+  this one carried its own import extractor — the third in the repository after B-008 unified the
+  two under `tests/`. Measured before the change: it agreed with the shared extractor today
+  (29 specifiers either way), so the divergence was latent rather than active. (B-010)
+
 ## [0.5.0] - 2026-08-27
 
 ### Added
