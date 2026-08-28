@@ -20,6 +20,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Changed
 
+- The README says what a skill is for. Measured: the skills teach 176 symbols across 29 subpaths
+  while 545 exported symbols are taught by nothing — a ratio that looks alarming until you know a
+  `SKILL.md` is always-loaded context, where every symbol costs tokens in every conversation whether
+  or not it is needed. The gate runs in the other direction only, and that count is 0: nothing a
+  skill teaches is missing from its package. The section states the limit too — nobody has measured
+  which exports matter, and nothing proposes a new one for inclusion. (B-006)
+
+- The README said the repository ships one skill. It ships 31.
+
 - **`--check` now compares content.** It used to compare existence only, so an installed `SKILL.md`
   that had been edited passed as healthy — measured with a control: an intact install exits 0, a
   deleted skill directory exits 1, and an edited instruction file also exited **0**. The command the
