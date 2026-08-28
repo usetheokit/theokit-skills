@@ -5,12 +5,17 @@
  * user who never installed and a user whose install went stale to the same unhelpful message.
  */
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
-import { drift, readManifest, writeManifest, manifestPath } from "../lib/manifest.mjs";
+import { digestOf, drift, readManifest, writeManifest, manifestPath } from "../lib/manifest.mjs";
+
+/** Stamp each entry with the digest of what is on disk right now — what the installer does. */
+function withDigests(root, entries) {
+  return entries.map((e) => ({ ...e, digest: digestOf(join(root, e.path)) }));
+}
 
 const roots = [];
 function scratch() {
@@ -43,11 +48,20 @@ test("a manifest from another version reports `version`, with both numbers", () 
 });
 
 test("a matching version with the files deleted reports `missing`, and names them", () => {
+  // Rewritten for B-002: `expected` was a parameter, and the caller passed the INSTALLATION PLAN —
+  // what an install would do on THIS machine. That made the gate's answer depend on which other
+  // tools happened to be installed on the runner. The manifest is the only record of what was
+  // actually installed, so it is now the only expectation.
   const root = scratch();
-  writeManifest(root, { version: "1.0.0", entries: [] });
-  const state = drift(root, { version: "1.0.0", expected: [{ path: join(root, "gone") }] });
+  writeManifest(root, {
+    version: "1.0.0",
+    entries: [{ skill: "gone", target: "agents", path: "gone", mode: "copy", digest: "irrelevant" }],
+  });
+
+  const state = drift(root, { version: "1.0.0" });
+
   assert.equal(state.kind, "missing");
-  assert.equal(state.missing.length, 1);
+  assert.deepEqual(state.missing, ["gone"]);
 });
 
 test("a matching version with the files present reports `current`", () => {
@@ -74,4 +88,78 @@ test("a corrupt manifest is treated as absent rather than crashing the installer
   writeFileSync(manifestPath(root), "{ not json");
   assert.equal(readManifest(root), undefined);
   assert.equal(drift(root, { version: "1.0.0", expected: [] }).kind, "absent");
+});
+
+// ── B-002: `--check` detected exactly one thing, and it was not drift ─────────────────────────────
+//
+// Measured on 55d64ca with a control in both directions: an intact install exits 0, a deleted skill
+// directory exits 1 — and a CHANGED `SKILL.md` also exits 0. The gate the help text calls "fail if
+// what is installed drifted from this version (CI)" could not see an edited instruction file.
+//
+// It compares content now, over the whole skill DIRECTORY, which is what makes a file under
+// `references/` covered without a second mechanism.
+
+test("a changed file in an installed skill is drift, not health", () => {
+  const root = scratch();
+  const skill = join(root, "skills", "theokit-x");
+  mkdirSync(skill, { recursive: true });
+  writeFileSync(join(skill, "SKILL.md"), "the original instruction");
+
+  const entries = [{ skill: "theokit-x", target: "agents", path: "skills/theokit-x", mode: "copy" }];
+  writeManifest(root, { version: "1.0.0", entries: withDigests(root, entries) });
+
+  assert.equal(drift(root, { version: "1.0.0" }).kind, "current", "control: untouched must be clean");
+
+  writeFileSync(join(skill, "SKILL.md"), "the original instruction, quietly edited");
+  const state = drift(root, { version: "1.0.0" });
+
+  assert.equal(state.kind, "content");
+  assert.deepEqual(state.changed, ["skills/theokit-x"]);
+});
+
+test("a file under references/ is covered by the same comparison", () => {
+  const root = scratch();
+  const skill = join(root, "skills", "theokit-x");
+  mkdirSync(join(skill, "references"), { recursive: true });
+  writeFileSync(join(skill, "SKILL.md"), "instruction");
+  writeFileSync(join(skill, "references", "api.md"), "the generated surface");
+
+  const entries = [{ skill: "theokit-x", target: "agents", path: "skills/theokit-x", mode: "copy" }];
+  writeManifest(root, { version: "1.0.0", entries: withDigests(root, entries) });
+  assert.equal(drift(root, { version: "1.0.0" }).kind, "current");
+
+  rmSync(join(skill, "references", "api.md"));
+
+  assert.equal(drift(root, { version: "1.0.0" }).kind, "content", "B-002 DoD bullet 3");
+});
+
+test("a manifest without digests is refused, not half-checked", () => {
+  const root = scratch();
+  // a schema-1 manifest, written by hand as an older version would have
+  writeFileSync(
+    manifestPath(root),
+    JSON.stringify({ schema: 1, package: "@theokit/skills", version: "1.0.0", entries: [] }),
+  );
+
+  assert.equal(
+    drift(root, { version: "1.0.0" }).kind,
+    "absent",
+    "wipe and reinstall — never silently migrate, per the schema's own contract",
+  );
+});
+
+test("a dangling link is missing, and never a crash", () => {
+  // `npm ci` removing the package leaves a link whose target is gone. Measured: existsSync says
+  // false, lstat says symlink, and hashing it throws ENOENT — so existence must be checked first.
+  const root = scratch();
+  mkdirSync(join(root, "skills"), { recursive: true });
+  symlinkSync(join(root, "gone"), join(root, "skills", "theokit-x"));
+
+  const entries = [{ skill: "theokit-x", target: "agents", path: "skills/theokit-x", mode: "link", digest: "deadbeef" }];
+  writeManifest(root, { version: "1.0.0", entries });
+
+  const state = drift(root, { version: "1.0.0" });
+
+  assert.equal(state.kind, "missing");
+  assert.deepEqual(state.missing, ["skills/theokit-x"]);
 });

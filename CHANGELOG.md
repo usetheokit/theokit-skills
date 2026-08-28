@@ -18,6 +18,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Changed
+
+- **`--check` now compares content.** It used to compare existence only, so an installed `SKILL.md`
+  that had been edited passed as healthy — measured with a control: an intact install exits 0, a
+  deleted skill directory exits 1, and an edited instruction file also exited **0**. The command the
+  help text calls *"fail if what is installed drifted from this version (CI)"* detected a directory
+  disappearing and nothing else. The comparison is over the whole skill directory, so a file under
+  `references/` is covered by the same mechanism rather than a second one. (B-002)
+
+- **`--check` stopped reporting drift about the machine it runs on.** Its expectation came from the
+  *installation plan* — what an install would do here, derived from which tools are detected — rather
+  than from the manifest, which records what was actually installed. So a bare `--check` after a
+  `--target=agents` install exited 1 on any machine that also had `~/.claude`, for paths that were
+  never installed. Anyone who trusted it in CI had to pass `--target` to make it pass, which silently
+  narrowed what was checked. (B-002)
+
+- The manifest schema is `2`. A manifest written by an older version is refused as `absent` rather
+  than half-checked — its own contract has always been *"a bump means wipe and reinstall, never
+  silently migrate"*, and treating a missing digest as "content unknown, skip the check" would have
+  made the gate weakest exactly on the installs that predate the fix. One `npx @theokit/skills
+  --force` after upgrading. (B-002)
+
 ### Fixed
 
 - Two `.sort()` calls in the coverage script now carry explicit comparators. One of them sorted an
