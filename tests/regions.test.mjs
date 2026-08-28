@@ -78,3 +78,27 @@ test("an #endregion with no open region is rejected", () => {
 test("a non-kebab-case id is not recognised as a region marker", () => {
   assert.deepEqual(parseRegions("// #region skill:Create_Agent", "src/a.ts"), []);
 });
+
+test("a CRLF source yields code with no stray carriage returns", () => {
+  const source = ["// #region skill:crlf", "const a = 1;", "const b = 2;", "// #endregion"].join("\r\n");
+
+  const [region] = parseRegions(source, "src/a.ts");
+
+  assert.equal(region.code, "const a = 1;\nconst b = 2;");
+  assert.doesNotMatch(region.code, /\r/);
+});
+
+test("a marker lookalike inside a string fails loudly rather than truncating silently", () => {
+  const source = [
+    "// #region skill:with-template",
+    "const doc = `",
+    "// #endregion",
+    "`;",
+    "// #endregion",
+  ].join("\n");
+
+  const error = captureError(() => parseRegions(source, "src/a.ts"));
+
+  assert.ok(error instanceof RegionError);
+  assert.match(error.message, /#endregion with no open region/);
+});
