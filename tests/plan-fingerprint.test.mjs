@@ -18,6 +18,24 @@ const CLI = fileURLToPath(new URL("../scripts/plan-fingerprint.mjs", import.meta
 // The commit message IS versioned even when the file is not. A fingerprint in a trailer makes a
 // later edit detectable without versioning `.claude/`.
 
+/**
+ * A plan file inside the repository's real plans directory, created and removed by the test.
+ *
+ * The CLI resolves the plans directory from its own module location, so a CLI-level test needs a
+ * plan to exist THERE. It cannot use a committed one: `.claude/` is gitignored, which is the very
+ * thing this item is about — and the first version of these tests pointed at
+ * `plan-fingerprint-plan.md` and passed only on the machine that had it. CI failed on all three
+ * platforms, which is the correct outcome for a test that cannot run anywhere else.
+ */
+function planInRepo(body) {
+  const dir = join(dirname(fileURLToPath(import.meta.url)), "..", ".claude", "records", "plans");
+  mkdirSync(dir, { recursive: true });
+  const slug = `zz-fingerprint-fixture-${process.pid}`;
+  const file = join(dir, `${slug}-plan.md`);
+  writeFileSync(file, body);
+  return { slug, file, cleanup: () => rmSync(file, { force: true }) };
+}
+
 function scratchPlan(body) {
   const root = mkdtempSync(join(tmpdir(), "fingerprint-"));
   const dir = join(root, ".claude", "records", "plans");
@@ -77,23 +95,33 @@ test("a malformed --verify argument is refused, distinctly from a mismatch", () 
   // EC-3: `--verify` takes its argument from a `sed` in a shell pipeline, and a pipeline that
   // matches nothing passes an EMPTY STRING. Comparing that to a real hash is a mismatch — which
   // reads as "the plan was edited" when what failed was the extraction.
-  // "" is NOT in this list any more, and the change is a design change rather than a test being
-  // bent: an empty argument is what a `sed` yields for a commit with NO TRAILER, so it is the
-  // `absent` case (exit 4), asserted in its own test below. Everything non-empty that is not a
-  // fingerprint is a typo or a broken extraction.
-  for (const argument of ["zz", "abc", "0123456789abcdefg"]) {
-    const run = spawnSync(process.execPath, [CLI, "plan-fingerprint", "--verify", argument], {
-      encoding: "utf8",
-    });
-    assert.equal(run.status, 3, `\`--verify ${JSON.stringify(argument)}\` must be refused, not compared`);
+  //
+  // "" is NOT in this list, and that is a design change rather than a test being bent: an empty
+  // argument is the `absent` case (exit 4), asserted separately.
+  const { slug, cleanup } = planInRepo("# Fixture\n");
+  try {
+    for (const argument of ["zz", "abc", "0123456789abcdefg"]) {
+      const run = spawnSync(process.execPath, [CLI, slug, "--verify", argument], { encoding: "utf8" });
+      assert.equal(run.status, 3, `\`--verify ${JSON.stringify(argument)}\` must be refused, not compared`);
+    }
+  } finally {
+    cleanup();
   }
 });
 
-test("the tool prints a trailer for a real plan in this repository", () => {
-  const run = spawnSync(process.execPath, [CLI, "plan-fingerprint"], { encoding: "utf8" });
+test("the tool prints a trailer for a plan in the repository's plans directory", () => {
+  const { slug, cleanup } = planInRepo("# Fixture\n\nGoal: exist.\n");
+  try {
+    const run = spawnSync(process.execPath, [CLI, slug], { encoding: "utf8" });
 
-  assert.equal(run.status, 0, run.stderr);
-  assert.match(run.stdout, /^Plan-SHA256: [0-9a-f]{16} \(.claude\/records\/plans\/plan-fingerprint-plan\.md\)$/m);
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(
+      run.stdout,
+      new RegExp(`^Plan-SHA256: [0-9a-f]{16} \\(.claude/records/plans/${slug}-plan\\.md\\)$`, "m"),
+    );
+  } finally {
+    cleanup();
+  }
 });
 
 test("a commit with no trailer is `absent` through the CLI, not `malformed`", () => {
@@ -104,16 +132,16 @@ test("a commit with no trailer is `absent` through the CLI, not `malformed`", ()
   // The distinction is not pedantry. `--verify` takes its argument from a `sed` over the commit
   // body; a commit with no trailer yields an EMPTY STRING, and that is the *absent* case, not a
   // typo. Calling it malformed sends the reader to check their pipeline instead of their commit.
-  const absent = spawnSync(process.execPath, [CLI, "plan-fingerprint", "--verify", ""], {
+  const { slug, cleanup } = planInRepo("# Fixture\n");
+  const absent = spawnSync(process.execPath, [CLI, slug, "--verify", ""], {
     encoding: "utf8",
   });
   assert.equal(absent.status, 4, "no trailer is its own answer");
   assert.match(absent.stderr, /no .*trailer/i);
 
-  const malformed = spawnSync(process.execPath, [CLI, "plan-fingerprint", "--verify", "zz"], {
-    encoding: "utf8",
-  });
+  const malformed = spawnSync(process.execPath, [CLI, slug, "--verify", "zz"], { encoding: "utf8" });
   assert.equal(malformed.status, 3, "a typo is still malformed");
+  cleanup();
 });
 
 test("a plan path that cannot be read is reported, not thrown as drift", () => {
