@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { DEPRECATED_FENCE, readSkill, skillFiles, skillNames } from "./_skills.mjs";
+import { liveTypescriptBlocks, readSkill, skillFiles, skillNames } from "./_skills.mjs";
 import { compile } from "./_typecheck.mjs";
 
 /**
@@ -18,26 +18,16 @@ import { compile } from "./_typecheck.mjs";
  */
 const COMPILES = ["theokit-client", "theokit-models", "theokit-sandbox"];
 
-const FENCE = /^```(\w+)?[^\n]*\n([\s\S]*?)^```/gm;
-
-/** The live TypeScript blocks of one skill, in document order, concatenated. */
+/**
+ * Concatenated, not compiled one by one: B-003's second measurement showed block 3 uses what block 1
+ * declared, and per-block compilation produced 485 `TS2304 Cannot find name` against 113 for the
+ * whole skill — a 77% drop that is instrument artefact, not corpus defect.
+ *
+ * The block reading itself lives in `_skills.mjs`. This file had its own copy and the two diverged;
+ * see the test at the bottom.
+ */
 function exampleBody(text) {
-  const blocks = [];
-  let match;
-  FENCE.lastIndex = 0;
-  while ((match = FENCE.exec(text)) !== null) {
-    const language = (match[1] ?? "").toLowerCase();
-    if (language !== "typescript" && language !== "ts") continue;
-    // A block introduced by a deprecated marker teaches by contrast. Compiling it would report the
-    // skill as broken for showing, on purpose, what not to do.
-    const preceding = text.slice(0, match.index).split("\n").filter(Boolean).at(-1) ?? "";
-    if (DEPRECATED_FENCE.test(preceding.trim())) continue;
-    blocks.push(match[2]);
-  }
-  // Concatenated, not compiled one by one: B-003's second measurement showed block 3 uses what
-  // block 1 declared, and per-block compilation produced 485 `TS2304 Cannot find name` against 113
-  // for the whole skill — a 77% drop that is instrument artefact, not corpus defect.
-  return blocks.join("\n");
+  return liveTypescriptBlocks(text).join("\n");
 }
 
 function bodyOf(slug) {
@@ -108,4 +98,28 @@ test("a defect in the BODY of an allowlisted skill turns the suite red", () => {
 
   assert.equal(broken.length, 1);
   assert.equal(broken[0].code, 2322);
+});
+
+test("a deprecated block is excluded the same way the import extractor excludes it", () => {
+  // Found by `/review`, and it was a FOURTH reader of fenced blocks in this repository — the class
+  // B-008 unified. `_skills.mjs` drops whitespace-only lines when looking for the marker
+  // (`filter((l) => l.trim())`); this file dropped only empty ones (`filter(Boolean)`). So with a
+  // blank-ish line between the marker and the fence, the import extractor excluded the block and
+  // this gate compiled it — reporting a skill as broken for correctly showing what NOT to do.
+  const text = [
+    "# Skill",
+    "",
+    "❌ Do not:",
+    "   ",
+    "```typescript",
+    'const wrong: number = "this is the anti-example";',
+    "```",
+    "",
+  ].join("\n");
+
+  assert.equal(
+    liveTypescriptBlocks(text).length,
+    0,
+    "the anti-example must not be compiled — both readers must agree",
+  );
 });
