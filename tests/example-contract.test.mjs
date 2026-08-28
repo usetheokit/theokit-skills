@@ -163,6 +163,17 @@ test("a region outside src/ is reported", () => {
   assert.ok(rules(dir).includes("region-location"));
 });
 
+test("a manifest id opened only outside src/ still counts as missing", () => {
+  const dir = makeExample((files) => {
+    files["helper.ts"] = files["src/cli.ts"];
+    files["src/cli.ts"] = "const nothing = 1;\n";
+  });
+
+  const found = rules(dir);
+  assert.ok(found.includes("region-missing"));
+  assert.ok(found.includes("region-location"));
+});
+
 test("an unclosed region is reported as a violation, not thrown", () => {
   const dir = makeExample((files) => {
     files["src/cli.ts"] = "// #region skill:create-agent-with-memory\nconst a = 1;\n";
