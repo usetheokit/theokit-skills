@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Added
 
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [0.8.0] - 2026-08-28
+
+### Added
+
 - When an example fails to compile, the gate points at the line in the `SKILL.md` — it used to print
   a line number inside a virtual concatenated file that exists nowhere, sending whoever fixes it to
   count fenced blocks by hand. (B-003)
@@ -17,6 +31,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   allowlist` — because a gate that does not say what it skipped is claiming coverage it has not
   earned. Skills join the list as they are fixed; a listed skill that stops compiling turns the suite
   red. (B-003)
+
+
 
 ### Changed
 
@@ -31,18 +47,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   import-resolution gate, and the new example gate needed the same machinery — compiler options, an
   in-memory host, and the map from each installed package's declared subpaths to its built
   declarations. Two copies would have drifted apart exactly as the two import extractors did. (B-003)
-
-### Added
-
-### Changed
-
-### Deprecated
-
-### Removed
-
-### Fixed
-
-### Security
 
 ## [0.7.0] - 2026-08-27
 
