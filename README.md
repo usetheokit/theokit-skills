@@ -115,15 +115,12 @@ always copies, which deletes the link/copy decision, the manifest and `--check` 
 stops being policed because it stops being possible. That is the third plan; until it lands, the
 mechanism above is what the published package does.
 
-## Known-stale in this repository
+## What the suite does not cover
 
-Stated rather than left to be discovered:
-
-- `.github/workflows/sdk-drift.yml` invokes `tests/api-resolves.test.mjs`,
-  `tests/drift-workflow.test.mjs` and `tests/taught-coverage.test.mjs`, all deleted by `9c2e340`.
-  The workflow cannot pass.
-- The suite no longer covers `bin/install.mjs`. Its tests went with the corpus.
-- `CHANGELOG.md` describes the corpus and the gates that policed it, both gone.
+`bin/install.mjs` has no unit tests — they went with the corpus in `9c2e340`. What remains is the
+CI smoke job, which on all three platforms asserts the one property that is checkable today: the
+installer refuses an empty corpus rather than reporting success over nothing. Coverage of a real
+install returns with the corpus.
 
 ## License
 

@@ -4,6 +4,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Removed
+
+- The 32 hand-written skills, and the machinery that policed them: the drift workflow, the
+  taught-coverage and plan-fingerprint scripts, and the mutation-testing setup. They existed to
+  detect a skill teaching an API the package no longer exports. The replacement makes that class of
+  error impossible instead of detectable — a skill's code is copied byte-for-byte out of an example
+  that CI ran, so it cannot teach code that does not run. **A release from this tree would ship an
+  installer with nothing to install; the corpus returns before the next publish.**
+
+### Added
+
+- `theokit-check-example`, a second binary that verifies an example against the contract skills are
+  generated from. It reports all 15 rules in one run rather than stopping at the first, and exits
+  non-zero when a tree contains no example at all, because silence over an empty set is the worst
+  output a checker can give. The rules are documented in `theokit-examples/EXAMPLE-CONTRACT.md`.
+
+### Changed
+
+- The installer's CI smoke test asserts that an empty corpus is refused rather than that a named
+  skill landed. It cannot assert the latter while the corpus is being regenerated, and a job that
+  is permanently red reports nothing.
+
+
 ### Fixed
 
 - A skill whose example has an unclosed fence is no longer counted as compiling. The block was read

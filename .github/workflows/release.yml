@@ -144,9 +144,14 @@ jobs:
           cd "$scratch"
           node -e 'require("fs").writeFileSync("package.json",JSON.stringify({name:"scratch",private:true,version:"1.0.0"}))'
           npm install --silent "./$tarball"
-          npx --no-install theokit-skills --target=agents
-          test -f .agents/skills/theokit-sdk/SKILL.md
-          npx --no-install theokit-skills --check  # `--target=` is inert on --check (W-10)
+          # skills/ is empty while the corpus is regenerated from theokit-examples, so the
+          # packed tarball has nothing to install. This asserts the refusal instead: a release
+          # that installed zero skills and said nothing is the failure this gate exists to stop.
+          # Restore the landed-skill assertion, and the --check line, with the corpus.
+          if npx --no-install theokit-skills --target=agents; then
+            echo "the packed installer exited 0 with an empty corpus" >&2
+            exit 1
+          fi
 
       - name: Publish with provenance
         if: github.event_name == 'push' || inputs.dry_run == false

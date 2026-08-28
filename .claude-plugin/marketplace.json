@@ -1,11 +1,14 @@
 {
   "name": "theokit",
-  "owner": { "name": "usetheo", "email": "paulo@usetheo.dev" },
+  "owner": {
+    "name": "usetheo",
+    "email": "paulo@usetheo.dev"
+  },
   "plugins": [
     {
       "name": "theokit-sdk",
       "source": "./",
-      "description": "Authoring skill for @theokit/sdk — accurate, up-to-date knowledge of the SDK surface (Agent.create/prompt, Tool.create, streaming SDKMessage events, MCP, subagents, cron, memory, errors) so Claude Code writes correct SDK code."
+      "description": "TheoKit ecosystem agent skills. The corpus is being regenerated from runnable examples and is currently empty; see the repository README."
     }
   ]
 }

@@ -45,7 +45,6 @@
     "prepublishOnly": "npm test"
   },
   "devDependencies": {
-    "@stryker-mutator/core": "^10.0.0",
     "@theokit/di": "^0.2.0",
     "@theokit/di-agent": "^0.4.0",
     "@theokit/gateway-discord": "^0.1.5",

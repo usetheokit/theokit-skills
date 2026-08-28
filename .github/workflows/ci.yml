@@ -66,7 +66,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: '.nvmrc'
-      - name: Install every skill into a scratch project
+      - name: The installer refuses an empty corpus instead of reporting success over nothing
         shell: bash
         run: |
           set -euo pipefail
@@ -75,13 +75,16 @@ jobs:
           # dirties the repository it is testing would fail the cleanliness check below for its
           # own reason rather than the code's.
           cd "$scratch"
-          node "$GITHUB_WORKSPACE/bin/install.mjs" --target=agents --target=claude
-          test -f .agents/skills/theokit-sdk/SKILL.md
-          test -f .claude/skills/theokit-sdk/SKILL.md
-          # `--check` reads the manifest, not the targets: since the check stopped deriving its
-          # expectation from detected targets, `--target=` here is inert and read as if it scoped
-          # something. (W-10, /review.)
-          node "$GITHUB_WORKSPACE/bin/install.mjs" --check
+          # skills/ is empty while the corpus is regenerated from theokit-examples, so this job
+          # cannot assert that a skill landed. It asserts the property that matters more while
+          # that is true: "installed" over zero skills is the worst output the installer could
+          # give, because the agent simply finds no skill and nothing says why. Restore the
+          # landed-skill assertions when the corpus returns.
+          if node "$GITHUB_WORKSPACE/bin/install.mjs" --target=agents --target=claude; then
+            echo "the installer exited 0 with an empty corpus" >&2
+            exit 1
+          fi
+          test -z "$(ls -A)"
       - name: The repo must be clean afterwards
         shell: bash
         run: git diff --exit-code && git status --porcelain
