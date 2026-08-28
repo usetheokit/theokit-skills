@@ -36,9 +36,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   A duplicated fence extractor is the divergence that actually recurred in this repository, and it
   was the one the guard never looked for. (B-016)
 
+- A drift run that could not check anything now says so, in an issue an owner receives. When the
+  install step failed, the job went red and filed **nothing** — the issue step keys on the check
+  having failed, and the check had never run. While that was true the drift gate was off and no
+  artefact recorded it. The new issue shares no wording with the drift issue, because the title is
+  the dedup key and an overlap would let one swallow the other. (B-019)
+
 ### Added
 
 ### Changed
+
+- A change to the scheduled drift workflow is now exercised before it merges. It was the only
+  workflow here with no `pull_request` trigger, so a change to it first ran at 06:00 UTC — two
+  defects landed in it in one day and CI caught neither. Its alerting invariants are asserted by a
+  test that runs on every pull request, with no registry access and no repository admin. (B-014)
 
 - The `extractor-oracle:` escape is scoped to the lines around the extractor it excuses rather than
   to the whole file. One marker exempted every extractor in the file that carried it, while the

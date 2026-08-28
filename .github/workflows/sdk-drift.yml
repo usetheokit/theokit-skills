@@ -121,6 +121,15 @@ jobs:
         # node_modules would report a bookkeeping mismatch that is really an install failure —
         # F-tw-10, one step over.
         #
+        # B-019, second half: an `if:` with no status function carries an implicit `success()`, so
+        # this step is ALREADY skipped whenever any earlier step failed — including `check`. Most of
+        # the protection above comes from that, and the explicit clause is narrower than it looks.
+        # It is kept anyway, and stated rather than deleted, because deleting it invites the next
+        # reader to "fix" the redundancy by writing `always() && steps.install.outcome == 'success'`,
+        # which drops the implicit guard and re-opens F-tw-10 from the other side. The consequence
+        # worth knowing: a bookkeeping mismatch is invisible on any run where `check` also failed.
+        # That is acceptable — a real drift is the louder finding and files its own issue.
+        #
         # stdout is discarded because the step above already printed it; the mismatch diagnosis goes
         # to stderr and still shows. The drift-issue step keys on `steps.check.outcome`, so failing
         # here can never open a drift issue — which is what keeps "someone forgot to update
@@ -189,3 +198,51 @@ jobs:
           sed -e "s|__SDK__|${SDK}|g" -e "s|__RUN_URL__|${RUN_URL}|g" -e "s|__PKGS__|${PKGS}|g" issue-body.template \
             | sed 's/^          //' > issue-body.md
           gh issue create --title "$title" --body-file issue-body.md
+
+      - name: Open an issue when the check could not run at all
+        # B-019. Until this step existed, an install failure made the job go red and file NOTHING:
+        # `check` never ran, so `steps.check.outcome` is not `failure`, and the step above — whose
+        # condition is exactly that — stayed skipped. The job's own header rejects this alerting
+        # story ("rather than turning a Slack notification nobody reads into the whole alerting
+        # story"); a red scheduled run nobody is paged for is that same failure wearing a different
+        # surface.
+        #
+        # `!=`, not `== 'skipped'`: the outcome is `skipped` when the step was reached and skipped,
+        # and UNSET when the job died earlier — in `checkout` or `setup-node`. `!=` is true in both,
+        # and the second is the wider case.
+        #
+        # Mutually exclusive with the step above by construction, and exhaustive over `failure()`
+        # with it. `tests/drift-workflow.test.mjs` asserts the PAIR rather than each condition, and
+        # runs on every pull request through `ci.yml` — which is the only reason a change to this
+        # file is reviewable at all (B-014).
+        if: failure() && steps.check.outcome != 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # Deliberately shares no distinguishing words with the drift title. The title IS the dedup
+          # key, searched with `in:title`, so an overlap would let an open "could not run" issue
+          # swallow a real drift filed the same day — F-dom-7 of the B-004 review, repeating.
+          title="the drift check could not run ($(date -u +%F))"
+          open_count="$(gh issue list --state open --search "$title in:title" --json number --jq 'length')"
+          if [ "$open_count" != "0" ]; then
+            echo "an open issue already tracks this"
+            exit 0
+          fi
+          cat > outage-body.template <<'BODY'
+          The scheduled drift check failed **before it could check anything**. This is not drift: no
+          skill has been shown to teach an API a package no longer has. The job could not answer the
+          question.
+
+          The usual cause is the install step — a package failing to resolve, a registry outage, or
+          the taught-package list naming something unpublished. Read the run log for which step went
+          red.
+
+          While this is open, the drift gate is OFF. A real drift landing today would not be
+          reported, because the check that detects it never runs.
+
+          Workflow run: __RUN_URL__
+          BODY
+          sed -e "s|__RUN_URL__|${RUN_URL}|g" outage-body.template | sed 's/^          //' > outage-body.md
+          gh issue create --title "$title" --body-file outage-body.md
