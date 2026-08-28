@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Security
 
-## [0.10.0] - 2026-08-28
+## [0.9.1] - 2026-08-28
 
 ### Fixed
 
