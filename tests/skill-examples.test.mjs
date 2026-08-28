@@ -56,12 +56,24 @@ export function sourceLineOf(blocks, concatenatedLine) {
   return undefined;
 }
 
+/**
+ * Does `file` belong to the skill `slug`?
+ *
+ * By the DIRECTORY NAME, not by a path suffix: `f.endsWith(`/${slug}/SKILL.md`)` is false on Windows,
+ * where `join` produces `skills\\theokit-client\\SKILL.md`, and every allowlist entry then reported
+ * `no-such-skill`. Caught by the Windows leg of CI, which is the leg that exists for this.
+ */
+export function isSkillFileFor(file, slug) {
+  const parts = file.split(/[\\/]/);
+  return parts.at(-1) === "SKILL.md" && parts.at(-2) === slug;
+}
+
 function skillFileOf(slug) {
-  return skillFiles().find((f) => f.endsWith(`/${slug}/SKILL.md`));
+  return skillFiles().find((f) => isSkillFileFor(f, slug));
 }
 
 function bodyOf(slug) {
-  const file = skillFiles().find((f) => f.endsWith(`/${slug}/SKILL.md`));
+  const file = skillFiles().find((f) => isSkillFileFor(f, slug));
   return file === undefined ? undefined : exampleBody(readSkill(file));
 }
 
@@ -211,4 +223,20 @@ test("a diagnostic points at the SKILL.md line, not at a virtual concatenated on
   // concatenated line 3 is block 2's first line, which is source line 11
   assert.equal(sourceLineOf(blocks, 3), 11);
   assert.equal(sourceLineOf(blocks, 1), 4);
+});
+
+test("a skill is found by its directory name, not by a path suffix with a hard-coded separator", () => {
+  // Windows CI caught this, and it is the SECOND time in this session I shipped the same class of
+  // bug: `f.endsWith(`/${slug}/SKILL.md`)` never matches on a platform where `join` produces
+  // `skills\theokit-client\SKILL.md`. Both allowlist checks reported `no-such-skill` for every
+  // skill, and the gate failed for a reason that had nothing to do with the skills.
+  //
+  // The predicate is separator-agnostic by construction now, rather than by remembering.
+  const posix = "/home/x/skills/theokit-client/SKILL.md";
+  const windows = "D:\\a\\repo\\skills\\theokit-client\\SKILL.md";
+
+  assert.equal(isSkillFileFor(posix, "theokit-client"), true);
+  assert.equal(isSkillFileFor(windows, "theokit-client"), true, "Windows paths use backslashes");
+  assert.equal(isSkillFileFor(posix, "theokit-models"), false);
+  assert.equal(isSkillFileFor("/home/x/skills/theokit-client-extra/SKILL.md", "theokit-client"), false);
 });
