@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Added
 
+- When an example fails to compile, the gate points at the line in the `SKILL.md` — it used to print
+  a line number inside a virtual concatenated file that exists nowhere, sending whoever fixes it to
+  count fenced blocks by hand. (B-003)
+
 - The examples in three skills are now **compiled** against the installed packages, as a gate that
   can fail. Until now nothing read a code block's body: an example whose imports resolved but whose
   body called a removed method, passed a wrong argument, or simply did not typecheck, shipped green.

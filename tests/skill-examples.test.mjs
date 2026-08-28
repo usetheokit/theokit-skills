@@ -27,7 +27,37 @@ const COMPILES = ["theokit-client", "theokit-models", "theokit-sandbox"];
  * see the test at the bottom.
  */
 function exampleBody(text) {
-  return liveTypescriptBlocks(text).join("\n");
+  // Joined with "" and not "\n": each block already ends with a newline, so joining with one more
+  // inserts a phantom blank line between blocks and every diagnostic after the first points one line
+  // too far. Normalising the trailing newline keeps concatenated line numbers exactly one-to-one
+  // with the blocks, which is what makes `sourceLineOf` arithmetic rather than guesswork.
+  return liveTypescriptBlocks(text)
+    .map((b) => (b.code.endsWith("\n") ? b.code : `${b.code}\n`))
+    .join("");
+}
+
+/**
+ * Translate a line in the concatenated body back to its line in the `SKILL.md`.
+ *
+ * The blocks are joined with a newline, so concatenated line 1 is block 1's first body line and the
+ * offsets accumulate. Without this the gate's failure address is a virtual filename and a line in a
+ * body that exists only in memory. (F-2, /review.)
+ */
+export function sourceLineOf(blocks, concatenatedLine) {
+  let consumed = 0;
+  for (const block of blocks) {
+    // the block as the concatenation sees it: trailing newline normalised, so the count is the
+    // number of BODY lines it contributes
+    const normalised = block.code.endsWith("\n") ? block.code : `${block.code}\n`;
+    const lines = normalised.split("\n").length - 1;
+    if (concatenatedLine <= consumed + lines) return block.startLine + (concatenatedLine - consumed - 1);
+    consumed += lines;
+  }
+  return undefined;
+}
+
+function skillFileOf(slug) {
+  return skillFiles().find((f) => f.endsWith(`/${slug}/SKILL.md`));
 }
 
 function bodyOf(slug) {
@@ -62,13 +92,22 @@ export function allowlistProblems(slugs, resolve) {
 test("every allowlisted skill's examples compile", () => {
   assert.deepEqual(allowlistProblems(COMPILES, bodyOf), []);
 
+  const blocksBySlug = Object.fromEntries(
+    COMPILES.map((slug) => [slug, liveTypescriptBlocks(readSkill(skillFileOf(slug)))]),
+  );
   const sources = Object.fromEntries(COMPILES.map((slug) => [`${slug}.ts`, bodyOf(slug)]));
   const diagnostics = compile(sources);
 
   const total = skillNames().length;
   console.log(`  ${COMPILES.length} skill(s) compiled, ${total - COMPILES.length} not in the allowlist`);
+  // Reported against the SKILL.md line, not the virtual concatenated one. A gate whose failure
+  // address exists nowhere the reader can look is a gate that costs an hour to act on. (F-2.)
   assert.deepEqual(
-    diagnostics.map((d) => `${d.file}:${d.line}  TS${d.code}  ${d.message}`),
+    diagnostics.map((d) => {
+      const slug = d.file.replace(/\.ts$/, "");
+      const line = sourceLineOf(blocksBySlug[slug], d.line) ?? d.line;
+      return `skills/${slug}/SKILL.md:${line}  TS${d.code}  ${d.message}`;
+    }),
     [],
   );
 });
@@ -122,4 +161,54 @@ test("a deprecated block is excluded the same way the import extractor excludes 
     0,
     "the anti-example must not be compiled — both readers must agree",
   );
+});
+
+test("removing a skill from the allowlist is a reduction in coverage, not test maintenance", () => {
+  // F-1 (/review): ADR-2 rejects deriving the list at run time because a gate that picks its own
+  // scope "cannot fail, and would shrink silently as skills broke". A hand-shrunk array does the
+  // same thing — the reviewer measured that `COMPILES` is read in five places, all inside this file,
+  // and by nothing else. The fastest green for a red gate was deleting a name from line 19, leaving
+  // `npm test` at the same count and only a console.log nobody asserts as the trace.
+  //
+  // A floor is editable too. What changes is that editing it is a second, deliberate act that reads
+  // as what it is, instead of one word disappearing from an array in a diff titled "fix tests".
+  assert.ok(
+    COMPILES.length >= 3,
+    `the allowlist has ${COMPILES.length} skills and this floor expects 3. Removing a skill REDUCES ` +
+      `what this gate covers. If that is intended, lower the floor in the same commit and say why — ` +
+      `a shrinking allowlist and a passing suite must not look the same from outside.`,
+  );
+});
+
+test("a diagnostic points at the SKILL.md line, not at a virtual concatenated one", () => {
+  // F-2 (/review): the gate compiled a virtual `{slug}.ts` built by joining the live blocks, so a
+  // diagnostic said `theokit-sandbox.ts:47` for a defect at line 112 of the real file. The address
+  // was in a filename that exists nowhere and a line number in a body nobody can see — sending the
+  // maintainer to count fence bodies by hand. `liveTypescriptBlocks` already had `match.index`; the
+  // offset was computed and thrown away.
+  const text = [
+    "# Skill",          // 1
+    "",                 // 2
+    "```typescript",    // 3
+    "const a = 1;",     // 4  <- block 1, body line 1
+    "const b = 2;",     // 5
+    "```",              // 6
+    "",                 // 7
+    "prose",            // 8
+    "",                 // 9
+    "```ts",            // 10
+    "const c = 3;",     // 11 <- block 2, body line 1
+    "```",              // 12
+  ].join("\n");
+
+  const blocks = liveTypescriptBlocks(text);
+
+  assert.deepEqual(
+    blocks.map((b) => b.startLine),
+    [4, 11],
+    "each block must know the line its body starts on in the source",
+  );
+  // concatenated line 3 is block 2's first line, which is source line 11
+  assert.equal(sourceLineOf(blocks, 3), 11);
+  assert.equal(sourceLineOf(blocks, 1), 4);
 });

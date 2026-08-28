@@ -62,7 +62,11 @@ export function liveTypescriptBlocks(text) {
     const language = (match[1] ?? "").toLowerCase();
     if (language !== "typescript" && language !== "ts") continue;
     if (skip.some(([from, to]) => match.index >= from && match.index < to)) continue;
-    blocks.push(match[2]);
+    // `startLine` is the 1-based line of the block's first BODY line in `text`. Kept rather than
+    // discarded: a gate that compiles concatenated blocks reports diagnostics against a virtual
+    // file, and without this the address it prints exists nowhere the reader can look.
+    const beforeBody = text.slice(0, match.index + match[0].indexOf("\n") + 1);
+    blocks.push({ code: match[2], startLine: beforeBody.split("\n").length });
   }
   return blocks;
 }
