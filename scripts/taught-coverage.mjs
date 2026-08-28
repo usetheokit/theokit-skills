@@ -101,7 +101,7 @@ export function coverage(taught, installed, resolved) {
     };
   }
 
-  for (const name of [...taught].sort()) {
+  for (const name of [...taught].sort((x, y) => x.localeCompare(y))) {
     const want = resolved.get(name);
     const onDisk = installed.get(name);
     if (!want) problems.push({ name, kind: "not-resolved", onDisk });
@@ -177,7 +177,11 @@ function main(argv = process.argv.slice(2)) {
     console.log(
       `taught-surface-coverage: ${installed.size}/${taught.size} taught packages present in node_modules`,
     );
-    for (const [name, version] of [...installed].sort()) console.log(`  ${name}@${version}`);
+    // Sorted by NAME, explicitly. The default comparator stringifies each `[name, version]` pair
+    // and compares `"name,version"` — which happens to order correctly today and would stop doing
+    // so the moment a name is a prefix of another and their versions differ. SonarQube S2871.
+    const byName = [...installed].sort(([x], [y]) => x.localeCompare(y));
+    for (const [name, version] of byName) console.log(`  ${name}@${version}`);
     return 0;
   }
 

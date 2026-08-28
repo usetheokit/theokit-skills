@@ -16,6 +16,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Security
 
+## [Unreleased]
+
+### Fixed
+
+- Two `.sort()` calls in the coverage script now carry explicit comparators. One of them sorted an
+  array of `[name, version]` pairs by the stringified pair rather than by name — correct today, and
+  wrong the moment one package name is a prefix of another and their versions differ. Found by
+  SonarQube on the release PR. (B-010)
+
 ## [0.6.0] - 2026-08-27
 
 ### Added
