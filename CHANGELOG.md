@@ -21,6 +21,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   separately, because the remedies differ: reinstalling fixes an edited copy, and only the dependency
   moving explains a linked one. (B-023)
 
+- A project `--check` that finds a home-directory manifest it cannot read says so, instead of
+  promising a personal install and a command that would report on it. `--check --global` would have
+  returned the same unhelpful message — a dead end offered as a next step. (B-022)
+
 ### Added
 
 ### Changed

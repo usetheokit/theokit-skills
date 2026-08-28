@@ -21,7 +21,7 @@ import { createRequire } from "node:module";
 
 import { TARGETS, detectTargets, targetById } from "../lib/targets.mjs";
 import { currentMode, isStableSource, place } from "../lib/install-mode.mjs";
-import { digestOf, drift, readManifest, writeManifest } from "../lib/manifest.mjs";
+import { MANIFEST_NAME, digestOf, drift, readManifest, writeManifest } from "../lib/manifest.mjs";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const version = createRequire(import.meta.url)(join(packageRoot, "package.json")).version;
@@ -137,6 +137,19 @@ for (const target of targets) {
 // vs `projectDir()`); it did not branch for where to record it. (B-022, W-08 of the B-002 review.)
 const scopeRoot = options.global ? homedir() : projectRoot;
 
+/** What the PERSONAL scope can honestly be said to hold, from a project check. Empty when global. */
+function personalScopeHint() {
+  if (options.global) return "";
+  const home = homedir();
+  if (readManifest(home) !== undefined) {
+    return ". A personal (--global) install does exist; run `--check --global` to report on it";
+  }
+  if (existsSync(join(home, ".theokit-skills.json"))) {
+    return `. There is a ${MANIFEST_NAME} in your home directory that this version cannot read — a personal install may exist, but reinstalling with --global is what will make it reportable`;
+  }
+  return "";
+}
+
 if (options.check) {
   const state = drift(scopeRoot, { version });
   if (state.kind === "current") {
@@ -151,14 +164,20 @@ if (options.check) {
     // manifest this version cannot read. The old wording ("no manifest found — the skills were never
     // installed here") asserted two things that are false in the second case, which is the common one
     // right after a schema bump: the file is right there and the skills ARE installed. (W-06, /review.)
-    // A personal install is a common reason for a project check to find nothing, and reporting a
-    // bare `absent` sends the reader looking for a broken install that is actually a working one in
-    // the other scope. Named rather than hinted. (B-022 DoD.)
-    absent: `no readable manifest for this version — either the skills were never installed here, or they were installed by a version whose manifest this one cannot read${
-      !options.global && existsSync(join(homedir(), ".theokit-skills.json"))
-        ? ". A personal (--global) install does exist; run `--check --global` to report on it"
-        : ""
-    }`,
+    // A personal install is a common reason for a project check to find nothing, and a bare `absent`
+    // sends the reader looking for a broken install that is a working one in the other scope. Named
+    // rather than hinted. (B-022 DoD.)
+    //
+    // THREE states, not two, and the middle one is why. The first version asked `existsSync`, which
+    // proves a PATH exists — while the sentence promised an INSTALL exists and told the reader to run
+    // a command that would report on it. /review measured four ways to make that false (a directory
+    // at the path, an old-schema manifest, malformed JSON, an unreadable file); each produced the
+    // promise, and following it returned this same message again. A claim the code had not verified,
+    // handed over as if it had — which is the defect this repository keeps paying for.
+    //
+    // Reporting nothing in that middle case would be its own dishonesty: something IS there, and the
+    // reader needs to know the personal install is STALE rather than absent. (F2, /review.)
+    absent: `no readable manifest for this version — either the skills were never installed here, or they were installed by a version whose manifest this one cannot read${personalScopeHint()}`,
     version: `installed from v${state.installed}, this package is v${state.current}`,
     missing: `${state.missing?.length ?? 0} installed path(s) no longer exist`,
     // The kind this gate existed to report and could not. Until B-002 it compared existence only,

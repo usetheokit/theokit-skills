@@ -269,3 +269,38 @@ test("a project install still writes its manifest where it always did", () => {
     assert.ok(!entry.path.split(/[\\/]/).includes(".."), `escaping path: ${entry.path}`);
   }
 });
+
+// F2 (/review of B-022): the hint was driven by `existsSync`, which proves a PATH exists — while the
+// sentence promised an INSTALL exists and told the reader to run a command that would report on it.
+// Measured four ways by the reviewer (a directory at that path, an old-schema manifest, malformed
+// JSON, an unreadable file): each produced the promise, and following it returned the same
+// unhelpful message. A claim the code did not verify, handed to the user as if it had.
+
+test("the personal-install hint is not made about a file this version cannot read", () => {
+  const { home, elsewhere, env } = personalScope();
+  // Old schema: a real file, a real past install, and nothing `--check --global` can report on.
+  writeFileSync(join(home, ".theokit-skills.json"), '{"schema":1,"version":"0.0.1","entries":[]}\n');
+
+  const checked = spawnSync(process.execPath, [BIN, "--check"], { cwd: elsewhere, encoding: "utf8", env });
+
+  assert.notEqual(checked.status, 0);
+  assert.doesNotMatch(
+    checked.stderr,
+    /install does exist/,
+    `promised a report that --check --global cannot produce: ${checked.stderr}`,
+  );
+  // Silence would be its own dishonesty — there IS something there, and the reader should know the
+  // personal install is STALE rather than absent.
+  assert.match(checked.stderr, /cannot read/i, `said nothing about the file that is there: ${checked.stderr}`);
+});
+
+test("the personal-install hint still fires for a real personal install", () => {
+  // The control for the test above: narrowing the claim must not silence it. Without this, gating on
+  // readability is satisfiable by never hinting at all.
+  const { elsewhere, env } = personalScope();
+  execFileSync(process.execPath, [BIN, "--global", "--copy"], { cwd: elsewhere, encoding: "utf8", env });
+
+  const checked = spawnSync(process.execPath, [BIN, "--check"], { cwd: elsewhere, encoding: "utf8", env });
+
+  assert.match(checked.stderr, /install does exist/);
+});
