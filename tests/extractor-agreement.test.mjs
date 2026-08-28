@@ -61,13 +61,23 @@ test("no test file carries its own import extractor", () => {
   // reading the files rather than by comparing two functions that share an implementation.
   const OWN_EXTRACTOR = /matchAll\(\s*\/(?:[^/\\]|\\.)*import|from\\s\*\[/;
   const offenders = [];
-  for (const file of readdirSync(testsDir)) {
-    if (!file.endsWith(".test.mjs")) continue;
-    const text = readFileSync(join(testsDir, file), "utf8");
-    // The agreement test itself names the pattern in prose and in this regex; skip only itself.
-    if (file === "extractor-agreement.test.mjs") continue;
-    if (OWN_EXTRACTOR.test(text)) offenders.push(file);
-  }
+  // Recursive. The first version listed `testsDir` only, so `tests/lint/no-ptbr.test.mjs` — a test
+  // file inside this guard's own declared scope — was never read. A guard that silently excludes
+  // part of what it claims to cover reports absence where it never looked. (F-dt-2, /review of B-010.)
+  const walk = (dir, prefix = "") => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        walk(join(dir, entry.name), rel);
+        continue;
+      }
+      if (!entry.name.endsWith(".test.mjs")) continue;
+      // The agreement test itself names the pattern in prose and in this regex; skip only itself.
+      if (rel === "extractor-agreement.test.mjs") continue;
+      if (OWN_EXTRACTOR.test(readFileSync(join(dir, entry.name), "utf8"))) offenders.push(rel);
+    }
+  };
+  walk(testsDir);
   assert.deepEqual(
     offenders,
     [],

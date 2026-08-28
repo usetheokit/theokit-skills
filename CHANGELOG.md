@@ -17,6 +17,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Changed
 
+- The two workflow steps that read the coverage now do genuinely different things. The reporting
+  step lists what is installed and cannot fail; the assertion step prints its verdict and fails on a
+  mismatch. Before this, one function did both and the reporting step — which is not given the
+  resolved-version list — exited 1 on **every run**, printing a misleading mismatch that
+  `continue-on-error` swallowed. A green job whose diagnostic step errored daily. (B-010)
+
+- The assertion's verdict reaches the log. It was being discarded, so the only number a reader saw
+  in a healthy run was the count of packages *present* — the measure this release replaced because
+  it cannot tell a verified package from one the lockfile supplied. (B-010)
+
+- The failure's closing advice is chosen by cause. It used to tell every failure to edit the install
+  list, which is the wrong instruction for two of the four causes and, for an empty corpus, points at
+  a file that cannot possibly help. (B-010)
+
 - The coverage gate refuses two shapes of missing input instead of reporting them clean: an empty
   skills corpus (the extractor broke, or `skills/` moved) and a resolved-version list carrying a
   token with no version. The second mattered most: a truncated token used to be dropped silently, so

@@ -15,7 +15,16 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { fileURLToPath } from "node:url";
+
 import { readSkill, skillFiles, specifiersIn } from "../tests/_skills.mjs";
+
+// The repository root, derived from this file rather than from the cwd. `taughtPackages()` already
+// resolves `skills/` module-relatively (via tests/_skills.mjs); `installedVersions()` used
+// `process.cwd()`, so running the script from anywhere but the repo root produced a confident,
+// entirely false seven-package diagnosis. CI always runs from the root; a human reproducing a
+// failure does not. (F-dt-3)
+const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 /** The @theokit package names the skills teach, as bare `@scope/name` (subpaths collapsed). */
 export function taughtPackages(files = skillFiles()) {
@@ -29,7 +38,7 @@ export function taughtPackages(files = skillFiles()) {
 }
 
 /** Those of `names` present under node_modules, mapped to the version on disk. */
-export function installedVersions(names, root = process.cwd()) {
+export function installedVersions(names, root = REPO_ROOT) {
   const found = new Map();
   for (const name of names) {
     const manifest = join(root, "node_modules", ...name.split("/"), "package.json");
@@ -111,15 +120,60 @@ const REMEDY = {
     "no skill teaches any @theokit package — the corpus is empty, unreadable, or the extractor broke. Refusing to report a clean result over nothing.",
 };
 
-function main() {
+/**
+ * The closing advice, chosen by cause rather than issued blanket.
+ *
+ * It used to say "add the missing names to TAUGHT_PACKAGES" for every failure. That is the wrong
+ * instruction for two of the four causes, and for an empty corpus it points at a file that cannot
+ * possibly fix it (F-xval-4) — telling a reader confidently to do the wrong thing, which is the
+ * defect T1.3 removed one branch over. Extracted from `main()` because the CLI path to an empty
+ * corpus is unreachable from a test: `taughtPackages()` resolves `skills/` module-relatively, so no
+ * choice of cwd empties it. A behaviour worth asserting has to be reachable by an assertion.
+ */
+export function closingAdvice(problems) {
+  if (problems.some((p) => p.kind === "empty-corpus")) {
+    return [
+      "  Nothing was measured. This is not about the install list — check that `skills/` is",
+      "  present and readable, and that the import extractor still recognises the corpus.",
+    ];
+  }
+  if (problems.some((p) => p.kind === "not-resolved")) {
+    return [
+      "  Add the names listed above to TAUGHT_PACKAGES in .github/workflows/sdk-drift.yml.",
+      "  Until then this job measures a smaller surface than the skills teach, and the",
+      "  packages it skips can remove an export without anything noticing.",
+    ];
+  }
+  return ["  See the per-package line above — each cause has its own remedy."];
+}
+
+function main(argv = process.argv.slice(2)) {
+  // Two behaviours, and the separation is load-bearing. ADR-2 of the plan gives the workflow one
+  // step that can NEVER fail (a report that fails is a report that can silence an alert) and one
+  // whose only purpose is to fail. That separation lived in the YAML and not here, so the report
+  // step invoked the assertion without `RESOLVED` and exited 1 on every single run — swallowed by
+  // `continue-on-error`, printing a misleading mismatch into a green job. Found by reading the log
+  // of run 33130141734 rather than its `conclusion`, which `continue-on-error` had marked success.
+  const asserting = argv.includes("--assert");
+
   const taught = taughtPackages();
   const installed = installedVersions(taught);
   const resolved = parseResolved(process.env.RESOLVED ?? "");
 
-  console.log(
-    `taught-surface-coverage: ${installed.size}/${taught.size} taught packages present in node_modules`,
-  );
-  for (const [name, version] of [...installed].sort()) console.log(`  ${name}@${version}`);
+  if (!asserting) {
+    // Report mode: the inventory, and nothing that can fail.
+    console.log(
+      `taught-surface-coverage: ${installed.size}/${taught.size} taught packages present in node_modules`,
+    );
+    for (const [name, version] of [...installed].sort()) console.log(`  ${name}@${version}`);
+    return 0;
+  }
+
+  // Assert mode: the verdict only. The listing was printed by the step above, and repeating it
+  // would bury the one line a human should read. That line MUST reach stdout: while it was
+  // discarded, the only observable in a green run was `taught-surface-coverage: N/M present in
+  // node_modules` — the PRESENCE metric ADR-3 refutes — so the change published the very number it
+  // was written to replace (F-wire-2).
 
   // An empty `resolved` is not "nothing to check" — it is the input missing. Treating it as clean
   // is the vacuity that caused this file to be rewritten, so it fails instead.
@@ -158,9 +212,7 @@ function main() {
     console.error(`      ${REMEDY[p.kind]}`);
   }
   console.error("");
-  console.error("  Add the missing names to TAUGHT_PACKAGES in .github/workflows/sdk-drift.yml.");
-  console.error("  Until then this job measures a smaller surface than the skills teach, and the");
-  console.error("  packages it skips can remove an export without anything noticing.");
+  for (const line of closingAdvice(result.problems)) console.error(line);
   return 1;
 }
 
