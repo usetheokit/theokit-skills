@@ -128,3 +128,45 @@ test("an example directory with nothing in it reports every missing file and doe
   assert.ok(found.every((violation) => typeof violation.rule === "string"));
   assert.ok(found.some((violation) => violation.rule === "required-files"));
 });
+
+test("a manifest id with no matching region in the code is reported", () => {
+  const dir = makeExample((files) => {
+    const manifest = JSON.parse(files["skill.json"]);
+    manifest.regions.push({ id: "never-written", explains: "x" });
+    files["skill.json"] = JSON.stringify(manifest);
+  });
+
+  assert.ok(rules(dir).includes("region-missing"));
+});
+
+test("a region in the code with no manifest entry is reported", () => {
+  const dir = makeExample((files) => {
+    files["src/cli.ts"] += "\n// #region skill:undeclared\nconst a = 1;\n// #endregion\n";
+  });
+
+  assert.ok(rules(dir).includes("region-undeclared"));
+});
+
+test("the same region id in two files is reported", () => {
+  const dir = makeExample((files) => {
+    files["src/other.ts"] = files["src/cli.ts"];
+  });
+
+  assert.ok(rules(dir).includes("region-duplicate"));
+});
+
+test("a region outside src/ is reported", () => {
+  const dir = makeExample((files) => {
+    files["helper.ts"] = files["src/cli.ts"];
+  });
+
+  assert.ok(rules(dir).includes("region-location"));
+});
+
+test("an unclosed region is reported as a violation, not thrown", () => {
+  const dir = makeExample((files) => {
+    files["src/cli.ts"] = "// #region skill:create-agent-with-memory\nconst a = 1;\n";
+  });
+
+  assert.ok(rules(dir).includes("region-syntax"));
+});
