@@ -20,6 +20,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Fixed
 
+- After a schema upgrade the failure message said "no manifest found — the skills were never
+  installed here" while the file sat right there with 31 skills installed. It now describes both
+  states it actually covers. (B-002)
+
+- The CI smoke passed `--target=` flags to `--check`, which have been inert on that path since the
+  check started reading the manifest — a line that read as if it scoped something. (B-002)
+
 - The gate is now exercised through the binary a user actually runs, not only through the library
   function underneath it. Deleting content-drift detection outright used to leave every end-to-end
   test green — the unit suite caught it and the shipped surface did not. (B-002)

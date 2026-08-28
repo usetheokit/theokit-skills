@@ -78,7 +78,10 @@ jobs:
           node "$GITHUB_WORKSPACE/bin/install.mjs" --target=agents --target=claude
           test -f .agents/skills/theokit-sdk/SKILL.md
           test -f .claude/skills/theokit-sdk/SKILL.md
-          node "$GITHUB_WORKSPACE/bin/install.mjs" --target=agents --target=claude --check
+          # `--check` reads the manifest, not the targets: since the check stopped deriving its
+          # expectation from detected targets, `--target=` here is inert and read as if it scoped
+          # something. (W-10, /review.)
+          node "$GITHUB_WORKSPACE/bin/install.mjs" --check
       - name: The repo must be clean afterwards
         shell: bash
         run: git diff --exit-code && git status --porcelain

@@ -137,7 +137,11 @@ if (options.check) {
     process.exit(0);
   }
   const reason = {
-    absent: "no manifest found — the skills were never installed here",
+    // Two states share this kind, and the message has to be true of both: no manifest at all, and a
+    // manifest this version cannot read. The old wording ("no manifest found — the skills were never
+    // installed here") asserted two things that are false in the second case, which is the common one
+    // right after a schema bump: the file is right there and the skills ARE installed. (W-06, /review.)
+    absent: "no readable manifest for this version — either the skills were never installed here, or they were installed by a version whose manifest this one cannot read",
     version: `installed from v${state.installed}, this package is v${state.current}`,
     missing: `${state.missing?.length ?? 0} installed path(s) no longer exist`,
     // The kind this gate existed to report and could not. Until B-002 it compared existence only,
