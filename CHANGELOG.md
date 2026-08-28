@@ -4,9 +4,76 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Fixed
+
+- The guard that forbids a second reader of the skills corpus now covers `scripts/` as well as
+  `tests/`. The script that compares taught packages against installed ones lives there and reads the
+  corpus, and the guard could not see it — it happened to use the shared module, which is a habit
+  rather than a guarantee. (B-016)
+
+- Default imports, namespace imports and re-exports count as taught. Only braced named imports did,
+  so `import theokit from "@theokit/sdk"` in a skill would have been invisible to every gate built on
+  that reader — the drift check, the resolution check and the taught-surface gate would each have
+  reported green over a symbol nobody verified. Zero such imports exist today; the forms are read now
+  so the day one appears is not the day nobody notices. (B-017)
+
+- Indented, tilde and four-backtick fenced examples are read. The four-backtick case was the worst of
+  the three and the opposite of what was expected: it was not skipped but silently **truncated** —
+  matched as three backticks plus a stray one and closed at the inner fence — so half an example
+  compiled and the skill was reported as compiling. Four backticks exist precisely to wrap examples
+  containing backticks, which is exactly when that goes unnoticed. (B-024)
+
+- Anti-examples stay excluded in all of those forms. The deprecation scan and the block reader each
+  had their own fence pattern, and widening only one would have made a skill fail for correctly
+  showing what not to do. One pattern now, used by both. (B-024)
+
+- `export * from`, side-effect `import "pkg"` and mixed `import d, { N } from` count as taught too.
+  The mixed form was the sharpest of the three: it dropped the braced half as well, which is the form
+  the skills actually use — so a single documentation habit could have hidden a real symbol. Zero of
+  the three exist in the corpus today. (B-017)
+
+- The guard against a second corpus reader now covers fence extractors, not only import extractors.
+  A duplicated fence extractor is the divergence that actually recurred in this repository, and it
+  was the one the guard never looked for. (B-016)
+
+- A drift run that could not check anything now says so, in an issue an owner receives. When the
+  install step failed, the job went red and filed **nothing** — the issue step keys on the check
+  having failed, and the check had never run. While that was true the drift gate was off and no
+  artefact recorded it. The new issue shares no wording with the drift issue, because the title is
+  the dedup key and an overlap would let one swallow the other. (B-019)
+
+- The drift job's alerting invariants are asserted against the `drift:` job and bound to the step
+  that carries each condition, not against the file as a whole. Two authoring accidents used to ship
+  green: swapping the two conditions between the steps — so a real drift would file "the check could
+  not run" and an install crash would file "skills drifted" — and a step drifting into a second job,
+  where `steps.check` does not exist and the correlation silently breaks. (B-014)
+
+- The workflow test reads a CRLF checkout. Git checks the file out with `\r\n` on Windows and every
+  pattern in it is anchored on `\n`, so the job region came back empty and CI went red on
+  `windows-latest`. Fourth instance of one class in this repository, after the manifest, the skill
+  examples and the fingerprint script. (B-014)
+
+- The mutation-scope detector no longer reads prose as a dependency. A test that merely *mentions* a
+  `lib/` path in a comment was required to join the mutation run, where it cannot kill a single
+  mutant — slowing every future audit for a fictional reason. (B-003)
+
+- The five import forms the corpus reader knows are one table rather than five near-identical loops.
+  Each form after the first arrived as its own review finding, and the sixth would have been another
+  copy of the same six lines. (B-017)
+
 ### Added
 
 ### Changed
+
+- A change to the scheduled drift workflow is now exercised before it merges. It was the only
+  workflow here with no `pull_request` trigger, so a change to it first ran at 06:00 UTC — two
+  defects landed in it in one day and CI caught neither. Its alerting invariants are asserted by a
+  test that runs on every pull request, with no registry access and no repository admin. (B-014)
+
+- The `extractor-oracle:` escape is scoped to the lines around the extractor it excuses rather than
+  to the whole file. One marker exempted every extractor in the file that carried it, while the
+  comment beside it stated the exception had to be declared on the line — honest about why and wrong
+  about where. (B-016)
 
 ### Deprecated
 

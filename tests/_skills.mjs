@@ -58,22 +58,57 @@ export const DEPRECATED_FENCE =
 export function liveTypescriptBlocks(text) {
   const skip = deprecatedRanges(text);
   const blocks = [];
-  for (const match of text.matchAll(/^```(\w+)?[^\n]*\n([\s\S]*?)^```/gm)) {
-    const language = (match[1] ?? "").toLowerCase();
+  // The fence may be indented, may use tildes, and may be longer than three characters — and the
+  // closing fence must be the SAME character repeated at least as many times. The old pattern was
+  // `^```` anchored flush left, which did three different things to three forms: it dropped indented
+  // and `~~~` fences, and it TRUNCATED four-backtick ones — matching ``` plus a stray backtick and
+  // closing at the inner ```, so half an example compiled and the skill was reported as compiling.
+  // Truncation is worse than dropping: a dropped block leaves a count short, a truncated one is a
+  // wrong answer wearing a right one's clothes. (B-024, EC-1.)
+  for (const match of text.matchAll(fencePattern())) {
+    // Group 3 is the whole info string now, not just its first word — the pattern stopped splitting
+    // it because `(\w+)?[^\n]*` overlapped and backtracked. CommonMark says the language is the
+    // first word of the info string, so it is taken here, where saying so is cheap.
+    const language = (match[3] ?? "").trim().split(/[^\w]/)[0].toLowerCase();
     if (language !== "typescript" && language !== "ts") continue;
     if (skip.some(([from, to]) => match.index >= from && match.index < to)) continue;
     // `startLine` is the 1-based line of the block's first BODY line in `text`. Kept rather than
     // discarded: a gate that compiles concatenated blocks reports diagnostics against a virtual
     // file, and without this the address it prints exists nowhere the reader can look.
     const beforeBody = text.slice(0, match.index + match[0].indexOf("\n") + 1);
-    blocks.push({ code: match[2], startLine: beforeBody.split("\n").length });
+    blocks.push({ code: match[4], startLine: beforeBody.split("\n").length });
   }
   return blocks;
 }
 
+/**
+ * Any fenced block: optional indent, three or more backticks OR tildes, closed by the same run.
+ *
+ * ONE definition, used by both the deprecation scan and the block reader. They had one each, and
+ * widening only the reader made anti-examples in the new forms COMPILE — a skill reported broken for
+ * correctly showing what not to do. That is the same divergence B-008 removed for import extractors
+ * and B-003's review found again in the fence reader; a third instance in the same file would be
+ * hard to call an accident.
+ *
+ * Capture groups: 1 indent, 2 the fence run, 3 the info string, 4 the body.
+ */
+function fencePattern() {
+  // The trailing `` `* `` is load-bearing: CommonMark lets a closing fence be LONGER than the
+  // opener, and it is what makes a four-backtick block close at its own fence instead of at the
+  // inner ```. A `~*` sat beside it with no such motivation — a mixed closer is not a valid fence
+  // pair, and accepting `` ```~~~ `` as a close was an unexplained clause in the one regex whose
+  // three previous unexplained clauses are the subject of this change. Removed. (F-8, /review.)
+  //
+  // `([^\n]*)` captures the WHOLE info string; the language is taken from it in code. It used to be
+  // `(\w+)?[^\n]*`, and those two overlap on every word character — the classic ambiguity that makes
+  // a match backtrack super-linearly on a long info line. One capture, no ambiguity, and the caller
+  // reads the language from it. (SonarQube S5852.)
+  return /^([ \t]*)(`{3,}|~{3,})[ \t]*([^\n]*)\n([\s\S]*?)^[ \t]*\2`*[ \t]*$/gm;
+}
+
 function deprecatedRanges(text) {
   const ranges = [];
-  for (const m of text.matchAll(/```[a-z]*\n([\s\S]*?)```/g)) {
+  for (const m of text.matchAll(fencePattern())) {
     const preceding = text
       .slice(Math.max(0, m.index - 200), m.index)
       .split("\n")
@@ -91,16 +126,74 @@ function deprecatedRanges(text) {
  * Imports inside a deprecated fence are excluded unless `includeDeprecated` is passed — see the
  * module header for why that is the default rather than the option.
  */
+/** Split a braced import list into the local names it binds. */
+function bracedNames(list) {
+  return (list ?? "")
+    .split(",")
+    .map((n) => n.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0]?.trim())
+    .filter((n) => n && /^[A-Za-z_$][\w$]*$/.test(n));
+}
+
+/**
+ * The five import forms this corpus can teach, each as (pattern, reader).
+ *
+ * ONE TABLE, NOT FIVE LOOPS. The loops were identical apart from how names come out of the match,
+ * and stacking them took `importsIn` to a cognitive complexity of 28 against a limit of 15
+ * (SonarQube S3776) — which is the measurable version of the thing that actually matters: the four
+ * forms added after the first were each a separate `/review` finding, and the next one would have
+ * been a sixth near-copy of the same six lines. A table makes adding a form one row.
+ *
+ * Every pattern except the first is anchored to the start of a line. That anchor is the whole
+ * difference between a statement and prose: "Do NOT import them from `@theokit/sdk/internal/…`"
+ * matched a first draft and produced a phantom taught symbol.
+ */
+const IMPORT_FORMS = [
+  // Braced named imports — the overwhelming majority, and the only form the corpus uses today (90
+  // @theokit-scoped, 110 counting every specifier; both measured). The oracle in
+  // skills-module.test.mjs asserts the scoped number, so a raw grep finding 110 is not a
+  // contradiction.
+  [
+    /import\s*(?:type\s+)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/g,
+    (m) => [m[2], bracedNames(m[1])],
+  ],
+  // A default or namespace binding, optionally followed by a braced list. The trailing
+  // `(?:,\s*\{([^}]*)\})?` is what keeps a MIXED import whole: `import d, { N } from "…"` used to
+  // be dropped ENTIRELY — including the braced half, which IS the form this corpus uses — because
+  // the comma broke the braced pattern and the bare-identifier pattern alike. (F-2, /review.)
+  [
+    /^[ \t]*(?:import|export)\s+(?:type\s+)?(?:(\*\s*as\s+[A-Za-z_$][\w$]*)|([A-Za-z_$][\w$]*))(?:\s*,\s*\{([^}]*)\})?\s+from\s*["']([^"']+)["']/gm,
+    (m) => [
+      m[4],
+      [(m[1] ?? m[2] ?? "").replace(/^\*\s*as\s+/, "").trim(), ...bracedNames(m[3])].filter(Boolean),
+    ],
+  ],
+  // `export { X } from "…"` — a re-export with braces, which the first form skips because it
+  // requires the literal `import`.
+  [
+    /^[ \t]*export\s*\{([^}]*)\}\s*from\s*["']([^"']+)["']/gm,
+    (m) => [m[2], bracedNames(m[1])],
+  ],
+  // `export * from "…"` binds no local name, so no identifier pattern reaches it. (F-1.)
+  [/^[ \t]*export\s*\*\s*from\s*["']([^"']+)["']/gm, (m) => [m[1], ["*"]]],
+  // A side-effect import binds nothing at all — `import "@theokit/sdk/register";`. It teaches a
+  // SPECIFIER without teaching a symbol, and the specifier is what the drift and resolution gates
+  // check. (F-1.) `["'];?` and not `["']\s*;?`: two space-matching quantifiers either side of an
+  // optional `;` split the same run many ways, which is the ambiguity S5852 names.
+  [/^[ \t]*import\s*["']([^"']+)["'];?[ \t]*$/gm, (m) => [m[1], []]],
+];
+
 export function importsIn(text, { includeDeprecated = false } = {}) {
   const skip = includeDeprecated ? [] : deprecatedRanges(text);
   const found = [];
-  for (const m of text.matchAll(/import\s*(?:type\s+)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/g)) {
-    if (skip.some(([a, b]) => m.index >= a && m.index < b)) continue;
-    const names = m[1]
-      .split(",")
-      .map((s) => s.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0]?.trim())
-      .filter((n) => n && /^[A-Za-z_$][\w$]*$/.test(n));
-    if (names.length > 0) found.push({ specifier: m[2], names });
+  for (const [pattern, read] of IMPORT_FORMS) {
+    for (const m of text.matchAll(pattern)) {
+      if (skip.some(([a, b]) => m.index >= a && m.index < b)) continue;
+      const [specifier, names] = read(m);
+      // A form that binds no name is still a taught SPECIFIER — `export *` and the side-effect
+      // import both reach here with an empty or symbolic list, and dropping them on `names.length`
+      // is how the reader lost them in the first place.
+      if (specifier) found.push({ specifier, names });
+    }
   }
   return found;
 }
