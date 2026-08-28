@@ -178,3 +178,20 @@ test("a slug cannot reach outside the plans directory", () => {
   assert.equal(run.status, 2);
   assert.match(run.stderr, /outside|not a plan slug/i);
 });
+
+test("the printed path uses forward slashes on every platform", () => {
+  // Windows CI caught this, and it is the THIRD time in this session I shipped a path built with
+  // the platform separator where a stable form was needed. The other two were `endsWith("/x/y")`
+  // matches; this one was output. A trailer whose shape depends on the machine that produced it is
+  // worse for the humans who read and grep them, even though the hash — which is what the mechanism
+  // actually compares — is unaffected.
+  const { slug, cleanup } = planInRepo("# Fixture\n");
+  try {
+    const run = spawnSync(process.execPath, [CLI, slug], { encoding: "utf8" });
+
+    assert.doesNotMatch(run.stdout, /\\/, "no backslash in a path this project prints");
+    assert.match(run.stdout, /\(\.claude\/records\/plans\//);
+  } finally {
+    cleanup();
+  }
+});

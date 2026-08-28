@@ -22,6 +22,19 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
+/**
+ * A repo-relative path with forward slashes, whatever platform produced it.
+ *
+ * `relative()` returns backslashes on Windows, so the same plan printed a different trailer there —
+ * `.claude\\records\\plans\\x-plan.md` against `.claude/records/plans/x-plan.md`. The hash is what
+ * the mechanism compares, so this was cosmetic; a trailer that changes shape by platform is still
+ * worse for the humans who read and grep them. `tests/lint/no-ptbr.test.mjs` already normalises this
+ * way, and following the pattern that existed beats inventing a third one.
+ */
+function posixRelative(file) {
+  return relative(REPO_ROOT, file).split(sep).join("/");
+}
+
 /** Sixteen hex characters of SHA-256 over the file's bytes. */
 export function fingerprint(file) {
   return createHash("sha256").update(readFileSync(file)).digest("hex").slice(0, 16);
@@ -91,20 +104,20 @@ function main(argv = process.argv.slice(2)) {
   if (!existsSync(file)) {
     // EC-1: named, never thrown. A tool whose failure mode is a stack trace gets wrapped in
     // `|| true` by the first person who scripts it, and then its answer is silence.
-    console.error(`plan-fingerprint: no plan for "${slug}" at ${relative(REPO_ROOT, file)}`);
+    console.error(`plan-fingerprint: no plan for "${slug}" at ${posixRelative(file)}`);
     return 2;
   }
 
   const read = readFingerprint(file);
   if (read.kind === "unreadable") {
-    console.error(`plan-fingerprint: cannot read ${relative(REPO_ROOT, file)} (${read.code}).`);
+    console.error(`plan-fingerprint: cannot read ${posixRelative(file)} (${read.code}).`);
     console.error("  This is not drift — the plan was never compared.");
     return 2;
   }
 
   const at = argv.indexOf("--verify");
   if (at === -1) {
-    console.log(`Plan-SHA256: ${read.digest} (${relative(REPO_ROOT, file)})`);
+    console.log(`Plan-SHA256: ${read.digest} (${posixRelative(file)})`);
     return 0;
   }
 
