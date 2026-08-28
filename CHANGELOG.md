@@ -4,6 +4,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Fixed
+
+- Detection of the `.agents` target is now covered per source. Two of the four directories it
+  checks — `~/.codex` and `~/.gemini` — were named by no test at all, and detection decides **where
+  an install writes**: dropping the `~/.codex` check meant a Codex user silently received no skills
+  with the suite still green. (B-011)
+
+- Whether an existing symlink points at the current package or at an older checkout is now asserted,
+  including that `--force` is what replaces it. `place()` used that answer to decide whether a re-run
+  replaces a link, and nothing tested it. (B-011)
+
 ### Added
 
 ### Changed
