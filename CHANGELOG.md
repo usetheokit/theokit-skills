@@ -4,6 +4,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [0.10.0] - 2026-08-28
+
 ### Fixed
 
 - Detection of the `.agents` target is now covered per source. Two of the four directories it
@@ -19,18 +33,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   **523** — the detection clauses account for ten of the twenty-one and `alreadyLinked` for six, with
   five string literals killed incidentally. The denominator is stated because a score can also move
   by narrowing what is measured, and from the number alone the two are indistinguishable. (B-011)
-
-### Added
-
-### Changed
-
-### Deprecated
-
-### Removed
-
-### Fixed
-
-### Security
 
 ## [0.9.0] - 2026-08-28
 
