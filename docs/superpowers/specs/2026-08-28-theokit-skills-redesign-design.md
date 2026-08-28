@@ -96,8 +96,10 @@ The coupling between `theokit-examples` and `theokit-skills` is exactly two arti
 }
 ```
 
-`regions` is ordered: array order is teaching order. `teaches` names export subpaths, not whole
-packages: that is what keeps `references/api.md` scoped.
+`regions` is ordered: array order is teaching order. `teaches` names export subpaths where a
+capability lives on one, and the package root where it lives on the root export — what matters is
+that the entry names the narrowest export that actually carries the capability, because that is
+what keeps `references/api.md` scoped.
 `notCovered` is required — the `theokit-examples` README already demands that an example state what
 the capability does not give you, and that section is what stops the agent from answering beyond the
 evidence.

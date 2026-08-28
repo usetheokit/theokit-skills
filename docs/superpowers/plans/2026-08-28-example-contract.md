@@ -1044,7 +1044,7 @@ Expected: PASS, 31 tests across four files.
 
 ```bash
 git add bin/check-example.mjs tests/check-example.test.mjs package.json
-git commit -m "feat(cli): check every example in a tree and fail on the first malformed one"
+git commit -m "feat(cli): check every example in a tree, reporting every malformed one"
 ```
 
 ---
@@ -1199,10 +1199,18 @@ would leave a rule that reports green because it never ran:
 - **6.7, everything in English.** This is the language lint deleted by commit `9c2e340`. It is listed
   in the distribution plan rather than here, because it must cover the generated corpus as well as
   the examples, and the corpus does not exist yet.
+- **Spec 6.5, the driver file is never extracted into regions.** No rule enforces it. It is
+  statically checkable — read `pkg.scripts.start`, resolve the path, assert no region opens in that
+  file — and `capabilities/memory` complies only because its author put the regions elsewhere.
+- **Spec 6.7, no local checkout.** The pin check reads `dependencies` and `devDependencies` only. An
+  `overrides`, `resolutions`, `optionalDependencies` or `peerDependencies` entry pointing
+  `@theokit/sdk` at a local path passes clean, and npm `overrides` is what wins at install time.
+  `package-lock.json` is required to exist but never read, though the lockfile is what decides what
+  installs.
 
 ## What this plan does not do
 
-- **No `CHANGELOG.md` entry.** Nothing here changes behavior for anyone consuming `@theokit/skills@0.9.2`. Entries land in the plan that ships the release.
+- **No `CHANGELOG.md` entry.** The release plan carries it, alongside the behaviour changes it ships with.
 - **No CI workflow in `theokit-examples`.** It depends on a published checker, and publishing is blocked while `skills/` is empty.
 - **No npm publish.**
 - **No generator, no gates, no installer change.** Those are the next two plans, and neither can be tested before Task 7 lands.
