@@ -75,19 +75,8 @@ jobs:
         with:
           # >= 22.14.0 is the floor npm states for OIDC publishing; `22` resolves to the latest 22.x.
           node-version-file: '.nvmrc'
-          registry-url: "https://registry.npmjs.org"
 
-      - name: npm >= 11.5.1, the floor for OIDC publishing # zizmor: ignore[adhoc-packages]
-        # The runner's bundled npm trails the Node release, and a version below the floor fails at
-        # publish time with an auth error that says nothing about the version. Upgrading is cheap and
-        # removes a diagnosis nobody would enjoy.
-        run: |
-          # Pinned exactly rather than `@latest`: this binary performs the publish, and
-          # a new npm arriving on its own would be an unreviewed change to the release
-          # path. 11.9.0 clears the OIDC floor (11.5.1) and is the version the rest of
-          # the organisation runs.
-          npm install -g npm@11.9.0 # zizmor: ignore[adhoc-packages] — bootstrapping npm itself; no lockfile can cover the package manager
-          npm --version
+      - uses: usetheokit/shared-workflows/actions/npm-oidc@v1 # zizmor: ignore[unpinned-uses]
 
       - name: The tag and the manifest must agree
         shell: bash
