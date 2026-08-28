@@ -16,6 +16,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Security
 
+## [0.8.0] - 2026-08-28
+
+### Added
+
+- When an example fails to compile, the gate points at the line in the `SKILL.md` — it used to print
+  a line number inside a virtual concatenated file that exists nowhere, sending whoever fixes it to
+  count fenced blocks by hand. (B-003)
+
+- The examples in three skills are now **compiled** against the installed packages, as a gate that
+  can fail. Until now nothing read a code block's body: an example whose imports resolved but whose
+  body called a removed method, passed a wrong argument, or simply did not typecheck, shipped green.
+  The list is explicit and the run prints both halves — `3 skill(s) compiled, 28 not in the
+  allowlist` — because a gate that does not say what it skipped is claiming coverage it has not
+  earned. Skills join the list as they are fixed; a listed skill that stops compiling turns the suite
+  red. (B-003)
+
+
+
+### Changed
+
+- Mutation testing runs the tests that can actually kill the mutants. Its runner re-executes a whole
+  npm script for every mutant, and the script was the entire suite — measured at 36.0s against 5.6s
+  for the four files that touch the mutated directories, so **84% of every run was spent on tests
+  that could not kill a single mutant** because they exercise the skills corpus rather than the
+  installer. A guard fails the suite if a test that does touch those directories is left out of the
+  smaller script, since that would lower the score silently rather than loudly. (B-003)
+
+- The TypeScript compiler the test suite uses lives in one place. It was embedded in the
+  import-resolution gate, and the new example gate needed the same machinery — compiler options, an
+  in-memory host, and the map from each installed package's declared subpaths to its built
+  declarations. Two copies would have drifted apart exactly as the two import extractors did. (B-003)
+
 ## [0.7.0] - 2026-08-27
 
 ### Changed

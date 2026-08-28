@@ -44,6 +44,33 @@ export const DEPRECATED_FENCE =
   /^(?:❌|(?:before|old|legacy|deprecated|don'?t|do not|instead of)\b).{0,40}:$/i;
 
 /** Byte ranges of fenced blocks that the prose marked as the old way. */
+/**
+ * The bodies of the live TypeScript fenced blocks in a skill, in document order.
+ *
+ * Here rather than in the gate that consumes it, because this file already decides what "live"
+ * means — `deprecatedRanges` finds the blocks a skill shows as WRONG, and a second reader deciding
+ * that question separately is the divergence B-008 spent a cycle removing for import extractors.
+ * It happened anyway: `skill-examples.test.mjs` shipped with its own copy, and the two disagreed
+ * when a whitespace-only line sat between the marker and the fence — this file skipped it and found
+ * `❌ Do not:`, the copy stopped at `"   "`. The gate compiled the anti-example and would have
+ * reported the skill broken for showing, correctly, what not to do.
+ */
+export function liveTypescriptBlocks(text) {
+  const skip = deprecatedRanges(text);
+  const blocks = [];
+  for (const match of text.matchAll(/^```(\w+)?[^\n]*\n([\s\S]*?)^```/gm)) {
+    const language = (match[1] ?? "").toLowerCase();
+    if (language !== "typescript" && language !== "ts") continue;
+    if (skip.some(([from, to]) => match.index >= from && match.index < to)) continue;
+    // `startLine` is the 1-based line of the block's first BODY line in `text`. Kept rather than
+    // discarded: a gate that compiles concatenated blocks reports diagnostics against a virtual
+    // file, and without this the address it prints exists nowhere the reader can look.
+    const beforeBody = text.slice(0, match.index + match[0].indexOf("\n") + 1);
+    blocks.push({ code: match[2], startLine: beforeBody.split("\n").length });
+  }
+  return blocks;
+}
+
 function deprecatedRanges(text) {
   const ranges = [];
   for (const m of text.matchAll(/```[a-z]*\n([\s\S]*?)```/g)) {
