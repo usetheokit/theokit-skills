@@ -16,6 +16,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Security
 
+## [0.9.1] - 2026-08-28
+
+### Fixed
+
+- Detection of the `.agents` target is now covered per source. Two of the four directories it
+  checks — `~/.codex` and `~/.gemini` — were named by no test at all, and detection decides **where
+  an install writes**: dropping the `~/.codex` check meant a Codex user silently received no skills
+  with the suite still green. (B-011)
+
+- Whether an existing symlink points at the current package or at an older checkout is now asserted,
+  including that `--force` is what replaces it. `place()` used that answer to decide whether a re-run
+  replaces a link, and nothing tested it. (B-011)
+
+- Mutation coverage of `lib/` rose from **317 to 338 killed mutants**, over an unchanged total of
+  **523** — the detection clauses account for ten of the twenty-one and `alreadyLinked` for six, with
+  five string literals killed incidentally. The denominator is stated because a score can also move
+  by narrowing what is measured, and from the number alone the two are indistinguishable. (B-011)
+
 ## [0.9.0] - 2026-08-28
 
 ### Added
