@@ -41,7 +41,8 @@
   "scripts": {
     "test": "node --test",
     "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
-    "prepublishOnly": "npm test"
+    "prepublishOnly": "npm test",
+    "test:mutation": "node --test tests/manifest.test.mjs tests/install-mode.test.mjs tests/targets.test.mjs tests/cli.test.mjs"
   },
   "devDependencies": {
     "@stryker-mutator/core": "^10.0.0",

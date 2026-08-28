@@ -16,6 +16,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Changed
 
+- Mutation testing runs the tests that can actually kill the mutants. Its runner re-executes a whole
+  npm script for every mutant, and the script was the entire suite — measured at 36.0s against 5.6s
+  for the four files that touch the mutated directories, so **84% of every run was spent on tests
+  that could not kill a single mutant** because they exercise the skills corpus rather than the
+  installer. A guard fails the suite if a test that does touch those directories is left out of the
+  smaller script, since that would lower the score silently rather than loudly. (B-003)
+
 - The TypeScript compiler the test suite uses lives in one place. It was embedded in the
   import-resolution gate, and the new example gate needed the same machinery — compiler options, an
   in-memory host, and the map from each installed package's declared subpaths to its built
