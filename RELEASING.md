@@ -66,6 +66,46 @@ Every gate runs before the publish step, and the three-platform suite runs befor
 repeated there rather than assumed, because a tag can be cut from any commit, including one that
 never passed the branch gate.
 
+## The plan a commit was written against
+
+Plans live under `.claude/records/plans/`, which this repository never versions — `.claude/` is
+installed tooling, not project source. So a plan has no history and no diff, and a plan edited after
+the commit it governs is indistinguishable from one that was always right.
+
+That is not hypothetical. During a review in 2026-08 the plan's mtime was **114 seconds after** the
+commit it governed. Every acceptance criterion in it passed when executed, and nothing in the
+repository could tell "the plan was corrected" from "the plan was moved to match what was built".
+
+The commit **message** is versioned even when the file is not. So a commit that implements a plan
+records its fingerprint as a trailer:
+
+```
+Plan-SHA256: 8f2c1a9b4e7d0356 (.claude/records/plans/my-slug-plan.md)
+```
+
+Generate it with `node scripts/plan-fingerprint.mjs <slug>`, and check a commit against the plan on
+disk with:
+
+```sh
+node scripts/plan-fingerprint.mjs <slug> --verify "$(git log -1 --format=%b | sed -n 's/^Plan-SHA256: \([0-9a-f]*\).*/\1/p')"
+```
+
+Three answers, and they are deliberately distinct — `0` the plan is unchanged, `1` it changed since
+the commit (both fingerprints are printed), `2` the commit carries no trailer, `3` the argument was
+malformed. A commit with no trailer is **not** a pass: it was never checked, and reporting "not a
+mismatch" for it would be a clean result over an unverified state.
+
+### What this does not prove
+
+The trailer proves the plan **has not changed since the commit**. It does **not prove the plan
+existed before the work**: a plan written afterwards and committed with its own correct hash passes
+cleanly. Detecting that would need a timestamp nobody in this repository controls, and no mechanism
+here can supply one. A reader who believes the trailer proves more than this is worse off than one
+who has no trailer at all.
+
+It also depends on a human adding the line. An unfingerprinted commit reports `absent`, which is a
+visible gap rather than a silent one — but it is still a gap.
+
 ## Versioning
 
 `0.x`, so a breaking change bumps the minor. `1.0.0` would claim a stability nothing has measured

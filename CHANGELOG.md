@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Added
 
+- A commit can now record which plan it was written against. Plans live in a directory this
+  repository never versions, so a plan edited after the commit it governs used to be
+  indistinguishable from one that was always right — measured once at 114 seconds after the fact,
+  with every criterion passing and nothing able to tell a correction from a retrofit. The commit
+  message is versioned even when the file is not, so it carries the plan's fingerprint;
+  `scripts/plan-fingerprint.mjs` generates and checks it. `RELEASING.md` states what the mechanism
+  does **not** prove: that the plan existed before the work. (B-009)
+
+### Added
+
 ### Changed
 
 ### Deprecated
