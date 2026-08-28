@@ -4,6 +4,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Fixed
+
+- A `--global` install no longer writes a manifest into whatever directory you ran it from. It
+  installed into your home directory and recorded itself in the current working directory, with
+  entries like `../home/.agents/skills/theokit-agent-core` — paths that mean nothing from anywhere
+  else, in a file you could commit by accident. `--check` in that directory then measured the home
+  install while looking like it described the project it sat in. The manifest now lives in the scope
+  it describes, and a project `--check` that finds nothing says when a personal install exists
+  instead of reporting a bare absence. (B-022)
+
+- A linked skill whose dependency changed no longer reports that it "no longer matches this version".
+  In link mode the installed path is a symlink into `node_modules`, so a same-version content change
+  there — a workspace dependency, a `file:` install, a repack — produced a message that was false
+  twice: the version did match, and you had changed nothing. Linked and copied drift are now reported
+  separately, because the remedies differ: reinstalling fixes an edited copy, and only the dependency
+  moving explains a linked one. (B-023)
+
 ### Added
 
 ### Changed

@@ -313,3 +313,71 @@ test("digestOf failing during install does not leave the tree without a manifest
 
   assert.doesNotThrow(() => digestOf(skill), "an unreadable child must not abort the install");
 });
+
+// ── B-023: in link mode the digest follows into node_modules ─────────────────────────────────────
+//
+// The installed path is a symlink into `node_modules` and `digestOf` follows it, so the recorded
+// digest describes the DEPENDENCY's bytes. A same-version content change there — a workspace
+// dependency, a `file:` install, a repack — makes `--check` report "N installed skill(s) no longer
+// match this version". That sentence is false twice: the version DOES match, and the user changed
+// nothing. It sends them looking for an edit they did not make.
+
+function manifestWith(root, entries) {
+  writeFileSync(join(root, ".theokit-skills.json"),
+    `${JSON.stringify({ schema: 2, version: "9.9.9", entries }, null, 2)}\n`);
+}
+
+function skillDir(root, name, body) {
+  const dir = join(root, name);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "SKILL.md"), body);
+  return dir;
+}
+
+test("content drift on a LINKED entry names the dependency, not the version", () => {
+  const root = mkdtempSync(join(tmpdir(), "theokit-link-"));
+  skillDir(root, "linked", "changed after install\n");
+  manifestWith(root, [
+    { skill: "linked", target: "claude", path: "linked", mode: "link", digest: "stale" },
+  ]);
+
+  const state = drift(root, { version: "9.9.9" });
+
+  // EC-4: assert the BRANCH first. A fixture that drifts on `missing` or `version` would satisfy a
+  // message assertion by taking a different path entirely.
+  assert.equal(state.kind, "content");
+  assert.deepEqual(state.linked, ["linked"]);
+  assert.deepEqual(state.changed, []);
+});
+
+test("content drift on a COPIED entry keeps its wording", () => {
+  // EC-5: both messages come from one map. Asserting only that the link message mentions the
+  // dependency is satisfied by a build where BOTH say it — losing the distinction entirely.
+  const root = mkdtempSync(join(tmpdir(), "theokit-copy-"));
+  skillDir(root, "copied", "edited by hand\n");
+  manifestWith(root, [
+    { skill: "copied", target: "claude", path: "copied", mode: "copy", digest: "stale" },
+  ]);
+
+  const state = drift(root, { version: "9.9.9" });
+
+  assert.equal(state.kind, "content");
+  assert.deepEqual(state.changed, ["copied"]);
+  assert.deepEqual(state.linked, []);
+});
+
+test("a mixed manifest reports both kinds, not the first", () => {
+  // EC-6: a `find` where the code should `filter` passes every single-mode test.
+  const root = mkdtempSync(join(tmpdir(), "theokit-mixed-"));
+  skillDir(root, "a", "one\n");
+  skillDir(root, "b", "two\n");
+  manifestWith(root, [
+    { skill: "a", target: "claude", path: "a", mode: "link", digest: "stale" },
+    { skill: "b", target: "claude", path: "b", mode: "copy", digest: "stale" },
+  ]);
+
+  const state = drift(root, { version: "9.9.9" });
+
+  assert.deepEqual(state.linked, ["a"]);
+  assert.deepEqual(state.changed, ["b"]);
+});

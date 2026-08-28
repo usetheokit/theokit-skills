@@ -14,6 +14,7 @@
 // Zero dependencies, by design: this runs through `npx` on machines that have installed nothing.
 
 import { existsSync, readdirSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -127,12 +128,21 @@ for (const target of targets) {
 
 // ── --check: a CI gate, not an installer ─────────────────────────────────────────────────────
 
+// The scope the MANIFEST describes, which is not always the directory you ran from. A `--global`
+// install writes into the home directory and used to record itself in `process.cwd()` — measured
+// 2026-08-28: 31 entries reading `../home/.agents/skills/theokit-agent-core`, in a directory chosen
+// by nothing but where the operator stood. That file is committable, means nothing from anywhere
+// else, and makes `--check` there report on a home install while looking like it describes the
+// project it sits in. The installer already branched on scope for WHERE to install (`globalDir()`
+// vs `projectDir()`); it did not branch for where to record it. (B-022, W-08 of the B-002 review.)
+const scopeRoot = options.global ? homedir() : projectRoot;
+
 if (options.check) {
-  const state = drift(projectRoot, { version });
+  const state = drift(scopeRoot, { version });
   if (state.kind === "current") {
     // Counted from the manifest, not from `plan`: `plan` is what an install WOULD do here, and
     // reporting it would state a number about this machine rather than about the install.
-    const installed = readManifest(projectRoot)?.entries.length ?? 0;
+    const installed = readManifest(scopeRoot)?.entries.length ?? 0;
     console.log(`@theokit/skills: up to date — ${installed} skill installation(s) at v${version}.`);
     process.exit(0);
   }
@@ -141,13 +151,30 @@ if (options.check) {
     // manifest this version cannot read. The old wording ("no manifest found — the skills were never
     // installed here") asserted two things that are false in the second case, which is the common one
     // right after a schema bump: the file is right there and the skills ARE installed. (W-06, /review.)
-    absent: "no readable manifest for this version — either the skills were never installed here, or they were installed by a version whose manifest this one cannot read",
+    // A personal install is a common reason for a project check to find nothing, and reporting a
+    // bare `absent` sends the reader looking for a broken install that is actually a working one in
+    // the other scope. Named rather than hinted. (B-022 DoD.)
+    absent: `no readable manifest for this version — either the skills were never installed here, or they were installed by a version whose manifest this one cannot read${
+      !options.global && existsSync(join(homedir(), ".theokit-skills.json"))
+        ? ". A personal (--global) install does exist; run `--check --global` to report on it"
+        : ""
+    }`,
     version: `installed from v${state.installed}, this package is v${state.current}`,
     missing: `${state.missing?.length ?? 0} installed path(s) no longer exist`,
     // The kind this gate existed to report and could not. Until B-002 it compared existence only,
     // so an edited instruction file passed — the one failure the module's own header calls "worse
     // than a missing one, because the agent follows it with the same diligence".
-    content: `${state.changed?.length ?? 0} installed skill(s) no longer match this version: ${(state.changed ?? []).join(", ")}`,
+    // Two sentences, because the two have different causes and different remedies. A copied skill
+    // that drifted was edited here and a reinstall restores it; a LINKED one drifted because the
+    // dependency it points into changed under the same version, which no reinstall of this package
+    // addresses. The old wording said "no longer match this version" for both — false for the link
+    // case in both of its claims. (B-023.)
+    content: [
+      (state.changed?.length ?? 0) > 0
+        && `${state.changed.length} installed skill(s) no longer match this version: ${state.changed.join(", ")}`,
+      (state.linked?.length ?? 0) > 0
+        && `${state.linked.length} linked skill(s) point at a dependency whose content changed at the same version: ${state.linked.join(", ")}`,
+    ].filter(Boolean).join("; "),
   }[state.kind];
   console.error(`@theokit/skills: DRIFT — ${reason}.`);
   console.error("  An instruction file that is out of date is followed as diligently as a current");
@@ -168,14 +195,14 @@ for (const item of plan) {
 }
 
 if (!options.dryRun) {
-  writeManifest(projectRoot, {
+  writeManifest(scopeRoot, {
     version,
     // `digest` is what makes `--check` able to see a content change. Computed here, at install,
     // because this is the only moment the tree is known to be correct.
     entries: results.map((r) => ({
       skill: r.skill,
       target: r.target.id,
-      path: relative(projectRoot, r.path),
+      path: relative(scopeRoot, r.path),
       mode: r.mode,
       digest: digestOf(r.path),
     })),
