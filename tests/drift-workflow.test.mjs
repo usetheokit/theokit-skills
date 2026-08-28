@@ -22,7 +22,15 @@ const WORKFLOW = join(dirname(fileURLToPath(import.meta.url)), "..", ".github", 
 // EC-1: every "this pattern is absent" assertion below PASSES over an empty string, and half of
 // them are of that kind. A wrong path would report a clean bill of health. Read once, prove it is
 // really there, and let every other test build on that.
-const text = readFileSync(WORKFLOW, "utf8");
+// `\r\n` normalized on read. Git checks this file out with CRLF on Windows, and every
+// pattern here is anchored on `\n` — so `"\n  drift:\n"` never matched, the job region was
+// empty, and CI went red on windows-latest with `found 0`. That is the FOURTH instance of
+// this class in this repository: `lib/manifest.mjs` (v0.7.0, path separators),
+// `tests/skill-examples.test.mjs` (v0.8.0), `scripts/plan-fingerprint.mjs` (v0.9.0). The
+// pattern each time is the same — a POSIX assumption baked into a string, invisible to
+// every local run. Loud rather than silent, because EC-1 asserts the region is non-empty
+// before anything reads it.
+const text = readFileSync(WORKFLOW, "utf8").replace(/\r\n/g, "\n");
 
 // Everything below is asserted INSIDE the `drift:` job, not over the file. A text-level
 // test has no idea what a job is, and `/review` proved the cost: moving the outage step

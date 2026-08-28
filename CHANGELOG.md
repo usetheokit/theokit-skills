@@ -48,6 +48,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   not run" and an install crash would file "skills drifted" — and a step drifting into a second job,
   where `steps.check` does not exist and the correlation silently breaks. (B-014)
 
+- The workflow test reads a CRLF checkout. Git checks the file out with `\r\n` on Windows and every
+  pattern in it is anchored on `\n`, so the job region came back empty and CI went red on
+  `windows-latest`. Fourth instance of one class in this repository, after the manifest, the skill
+  examples and the fingerprint script. (B-014)
+
+- The mutation-scope detector no longer reads prose as a dependency. A test that merely *mentions* a
+  `lib/` path in a comment was required to join the mutation run, where it cannot kill a single
+  mutant — slowing every future audit for a fictional reason. (B-003)
+
 ### Added
 
 ### Changed
