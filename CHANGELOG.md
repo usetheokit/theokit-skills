@@ -6,16 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Added
 
-- The nightly drift job now **fails** when the packages the skills teach and the packages it
-  installs disagree, instead of printing the difference into a log nobody reads. Reverting
-  `TAUGHT_PACKAGES` to a single package used to leave every gate green while the job silently
-  measured one seventh of the taught surface; it now stops, names the six packages it is missing,
-  and says in as many words that this is a bookkeeping mismatch and not API drift — the two failures
-  are answered differently, so they must not look alike. (B-010)
+- The nightly drift job now **fails** when a package the skills teach was not installed at the
+  version that run resolved from the registry. It names the package, both versions, and which of
+  three things went wrong — the package is not in the install list (so whatever is on disk came from
+  the lockfile), or it was resolved and never installed, or the lockfile shadowed the version that
+  was resolved. Each has a different fix, so they are reported differently. The failure says
+  `BOOKKEEPING MISMATCH — this is not API drift` in those words, and files no drift issue: someone
+  forgetting to update a list and a package removing an export are answered differently and must not
+  look alike. (B-010)
 
 ### Changed
 
-- The coverage comparison moved out of an inline `node -e` inside the workflow and into
+- **The job's `taught-surface-coverage: 7/7` was vacuous, and had been since it was written.**
+  Measured on a dispatched run: with the install list shrunk to a single package it still reported
+  7/7, because `npm install --no-save <pkg>` also installs `package.json`'s dependencies and all
+  seven taught packages are devDependencies. Six arrived from the lockfile at versions that by
+  construction cannot have moved — the exact gap the job exists to close, through a side door. One
+  of them, `@theokit/sdk-tools`, was a published release behind while being counted as covered. The
+  number now compares against what the run resolved, not against what happens to be on disk. (B-010)
+
+- The comparison moved out of an inline `node -e` inside the workflow and into
   `scripts/taught-coverage.mjs`, with unit tests. A script embedded in YAML cannot be tested, and
   this one carried its own import extractor — the third in the repository after B-008 unified the
   two under `tests/`. Measured before the change: it agreed with the shared extractor today

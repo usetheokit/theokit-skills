@@ -39,38 +39,90 @@ export function installedVersions(names, root = process.cwd()) {
   return found;
 }
 
-/**
- * The comparison itself — pure, so it can be tested without a node_modules tree.
- * `missing` names the packages rather than counting them: a count tells you something is wrong and
- * not what to do about it, and B-010's DoD asks for the names.
- */
-export function coverage(taught, installed) {
-  const missing = [...taught].filter((name) => !installed.has(name)).sort();
-  return { taught: taught.size, installed: installed.size, missing, ok: missing.length === 0 };
+/** Parse `@scope/name@1.2.3 other@4.5.6` into a Map. The separator is the LAST `@`, not the first. */
+export function parseResolved(line) {
+  const out = new Map();
+  for (const token of (line ?? "").trim().split(/\s+/).filter(Boolean)) {
+    const at = token.lastIndexOf("@");
+    if (at <= 0) continue;
+    out.set(token.slice(0, at), token.slice(at + 1));
+  }
+  return out;
 }
+
+/**
+ * The comparison — pure, so it can be tested without a node_modules tree.
+ *
+ * It asks whether each taught package is present AT THE VERSION THIS RUN RESOLVED, not merely
+ * whether it is present. Presence was the first implementation's question and it was vacuous:
+ * dispatched run 33128039399 shrank the install list to one package and still saw all seven on
+ * disk, because `npm install --no-save <pkg>` also installs package.json's dependencies and all
+ * seven are devDependencies. Six came from the lockfile, at versions that by construction cannot
+ * have moved — which is the gap the job exists to close, arriving through a side door.
+ *
+ * Three causes, because each has a different remedy:
+ *   not-resolved  — the package is not in TAUGHT_PACKAGES; whatever is on disk came from the
+ *                   lockfile, so this job never asked the registry about it
+ *   not-installed — it was resolved but is absent; the install did not produce it
+ *   shadowed      — it is present at a DIFFERENT version than resolved; the lockfile won
+ */
+export function coverage(taught, installed, resolved) {
+  const problems = [];
+  for (const name of [...taught].sort()) {
+    const want = resolved.get(name);
+    const onDisk = installed.get(name);
+    if (!want) problems.push({ name, kind: "not-resolved", onDisk });
+    else if (!onDisk) problems.push({ name, kind: "not-installed", want });
+    else if (onDisk !== want) problems.push({ name, kind: "shadowed", want, onDisk });
+  }
+  return { taught: taught.size, installed: installed.size, problems, ok: problems.length === 0 };
+}
+
+const REMEDY = {
+  "not-resolved":
+    "not in TAUGHT_PACKAGES — whatever is on disk came from the lockfile, so this run never asked the registry about it",
+  "not-installed": "resolved but absent from node_modules — the install did not produce it",
+  "shadowed": "present at a different version than resolved — the lockfile won over @latest",
+};
 
 function main() {
   const taught = taughtPackages();
   const installed = installedVersions(taught);
-  const result = coverage(taught, installed);
+  const resolved = parseResolved(process.env.RESOLVED ?? "");
 
   console.log(
-    `taught-surface-coverage: ${result.installed}/${result.taught} taught packages present in node_modules`,
+    `taught-surface-coverage: ${installed.size}/${taught.size} taught packages present in node_modules`,
   );
   for (const [name, version] of [...installed].sort()) console.log(`  ${name}@${version}`);
-  if (result.ok) return 0;
 
-  // The literal below is load-bearing: it is what tells a reader that this is NOT the drift this
-  // job exists to detect. An API-drift failure comes from `npm test` and never prints this line.
+  // An empty `resolved` is not "nothing to check" — it is the input missing. Treating it as clean
+  // is the vacuity that caused this file to be rewritten, so it fails instead.
+  if (resolved.size === 0) {
+    console.error("");
+    console.error("BOOKKEEPING MISMATCH — this is not API drift.");
+    console.error("  RESOLVED is empty: the install step's resolved-version output did not reach");
+    console.error("  this step, so nothing can be verified. Refusing to report a clean result.");
+    return 1;
+  }
+
+  const result = coverage(taught, installed, resolved);
+  if (result.ok) {
+    console.log(`all ${result.taught} taught package(s) resolved by this run and matching on disk`);
+    return 0;
+  }
+
+  // The literal below is load-bearing: it tells a reader this is NOT the drift the job detects.
+  // An API-drift failure comes from `npm test` and never prints it.
   console.error("");
   console.error("BOOKKEEPING MISMATCH — this is not API drift.");
-  console.error(
-    `  The skills teach ${result.taught} @theokit package(s); only ${result.installed} were installed.`,
-  );
-  console.error("  Missing from the install:");
-  for (const name of result.missing) console.error(`    ${name}`);
+  console.error(`  ${result.problems.length} of ${result.taught} taught package(s) were not verified:`);
+  for (const p of result.problems) {
+    const versions = p.kind === "shadowed" ? ` (on disk ${p.onDisk}, resolved ${p.want})` : "";
+    console.error(`    ${p.name}${versions}`);
+    console.error(`      ${REMEDY[p.kind]}`);
+  }
   console.error("");
-  console.error("  Add them to TAUGHT_PACKAGES in .github/workflows/sdk-drift.yml.");
+  console.error("  Add the missing names to TAUGHT_PACKAGES in .github/workflows/sdk-drift.yml.");
   console.error("  Until then this job measures a smaller surface than the skills teach, and the");
   console.error("  packages it skips can remove an export without anything noticing.");
   return 1;

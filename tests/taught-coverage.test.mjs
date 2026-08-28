@@ -1,45 +1,82 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { coverage, taughtPackages } from "../scripts/taught-coverage.mjs";
+import { coverage, parseResolved, taughtPackages } from "../scripts/taught-coverage.mjs";
 
-// The drift job prints `taught-surface-coverage: N/M` and does nothing with it. B-010 is the gap
-// between printing and asserting: shrinking TAUGHT_PACKAGES back to one package prints `1/7` into a
-// log nobody reads while every gate stays green. These tests exercise the comparison directly, so
-// the assertion can be shown to fire before it is wired into YAML — where nothing can test it.
+// B-010. The drift job printed `taught-surface-coverage: 7/7` and nothing read it — and the number
+// itself was vacuous: dispatched run 33128039399 shrank TAUGHT_PACKAGES to one package and still
+// printed 7/7, because `npm install --no-save <pkg>` installs package.json's dependencies too and
+// all seven taught packages are devDependencies. Six arrived from the lockfile, at versions that by
+// construction cannot have moved.
+//
+// So the question is not "is the package there" but "is the package there at the version THIS RUN
+// resolved from the registry". These tests are written against that question.
 
-test("a package the skills teach and the install misses is named, not just counted", () => {
-  const taught = new Set(["@theokit/sdk", "@theokit/di", "@theokit/absent"]);
+test("a taught package this run never resolved is reported, even though it is on disk", () => {
+  const taught = new Set(["@theokit/sdk", "@theokit/di"]);
+  const resolved = new Map([["@theokit/sdk", "4.60.0"]]);
   const installed = new Map([
     ["@theokit/sdk", "4.60.0"],
-    ["@theokit/di", "0.2.0"],
+    ["@theokit/di", "0.2.0"], // present — from the lockfile, which is the whole point
   ]);
 
-  const result = coverage(taught, installed);
+  const result = coverage(taught, installed, resolved);
 
   assert.equal(result.ok, false);
-  assert.deepEqual(result.missing, ["@theokit/absent"]);
-  assert.equal(result.taught, 3);
-  assert.equal(result.installed, 2);
+  assert.equal(result.problems.length, 1);
+  assert.equal(result.problems[0].name, "@theokit/di");
+  assert.equal(result.problems[0].kind, "not-resolved");
 });
 
-test("agreement between the two sets is ok, with nothing missing", () => {
-  const taught = new Set(["@theokit/sdk", "@theokit/di"]);
+test("a resolved package missing from disk is reported as not installed", () => {
+  const taught = new Set(["@theokit/sdk"]);
+  const resolved = new Map([["@theokit/sdk", "4.60.0"]]);
+
+  const result = coverage(taught, new Map(), resolved);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.problems[0].kind, "not-installed");
+  assert.equal(result.problems[0].want, "4.60.0");
+});
+
+test("a lockfile version shadowing the resolved one is reported as shadowed", () => {
+  // The exact shape observed in run 33128039399: sdk-tools present at its lockfile version while a
+  // newer one was published. Named, present, and a release stale.
+  const taught = new Set(["@theokit/sdk-tools"]);
+  const resolved = new Map([["@theokit/sdk-tools", "0.27.2"]]);
+  const installed = new Map([["@theokit/sdk-tools", "0.27.0"]]);
+
+  const result = coverage(taught, installed, resolved);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.problems[0].kind, "shadowed");
+  assert.equal(result.problems[0].want, "0.27.2");
+  assert.equal(result.problems[0].onDisk, "0.27.0");
+});
+
+test("agreement across the three sets is ok, parsing a real resolved line", () => {
+  // Also covers parseResolved against scoped names, where the version separator is the LAST `@`.
+  const resolved = parseResolved(
+    "@theokit/sdk@4.60.0 @theokit/gateway-slack@0.2.2 typescript@5.9.3",
+  );
+  assert.equal(resolved.get("@theokit/sdk"), "4.60.0");
+  assert.equal(resolved.get("@theokit/gateway-slack"), "0.2.2");
+
+  const taught = new Set(["@theokit/sdk", "@theokit/gateway-slack"]);
   const installed = new Map([
     ["@theokit/sdk", "4.60.0"],
-    ["@theokit/di", "0.2.0"],
+    ["@theokit/gateway-slack", "0.2.2"],
   ]);
 
-  const result = coverage(taught, installed);
+  const result = coverage(taught, installed, resolved);
 
   assert.equal(result.ok, true);
-  assert.deepEqual(result.missing, []);
+  assert.deepEqual(result.problems, []);
 });
 
-// B-010's named regression, in the words the item used: a reviewer asked whether the report notices
-// if someone REVERTS the widening. It did not. This is that scenario against the real corpus — if
-// the taught set is read from the skills and only @theokit/sdk is installed, every other taught
-// package must be named.
+// B-010's named regression, in the item's own words: a reviewer asked whether the report would
+// notice someone REVERTING the widening. The first implementation did not, and this is the test
+// that fails against it.
 test("reverting the install list to a single package is caught, against the real corpus", () => {
   const taught = taughtPackages();
   assert.ok(
@@ -47,11 +84,14 @@ test("reverting the install list to a single package is caught, against the real
     `the corpus teaches ${taught.size} packages — under 7 means the extractor broke, not the corpus`,
   );
 
-  const installed = new Map([["@theokit/sdk", "4.60.0"]]);
-  const result = coverage(taught, installed);
+  const resolved = new Map([["@theokit/sdk", "4.60.0"]]);
+  // every taught package present on disk, exactly as the dispatched run observed
+  const installed = new Map([...taught].map((n) => [n, n === "@theokit/sdk" ? "4.60.0" : "0.0.1"]));
+
+  const result = coverage(taught, installed, resolved);
 
   assert.equal(result.ok, false);
-  assert.equal(result.missing.length, taught.size - 1);
-  assert.ok(result.missing.includes("@theokit/gateway-slack"));
-  assert.ok(!result.missing.includes("@theokit/sdk"));
+  assert.equal(result.problems.length, taught.size - 1);
+  assert.ok(result.problems.every((p) => p.kind === "not-resolved"));
+  assert.ok(result.problems.some((p) => p.name === "@theokit/gateway-slack"));
 });

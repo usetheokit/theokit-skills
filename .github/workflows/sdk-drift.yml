@@ -126,6 +126,13 @@ jobs:
         # here can never open a drift issue — which is what keeps "someone forgot to update
         # TAUGHT_PACKAGES" distinguishable from "a package removed an export".
         if: steps.install.outcome == 'success'
+        env:
+          # The versions this run resolved from the registry. Presence in node_modules is NOT the
+          # question: `npm install --no-save <pkg>` also installs package.json's dependencies, and
+          # all seven taught packages are devDependencies — so a shrunk TAUGHT_PACKAGES still leaves
+          # all seven on disk, from the lockfile, at versions that by construction cannot have
+          # moved. Measured in run 33128039399, which passed a gate that should have failed.
+          RESOLVED: ${{ steps.install.outputs.resolved }}
         run: node scripts/taught-coverage.mjs > /dev/null
 
       - name: Open an issue when a skill teaches an API the package no longer has
