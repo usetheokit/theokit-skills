@@ -146,7 +146,7 @@ jobs:
           npm install --silent "./$tarball"
           npx --no-install theokit-skills --target=agents
           test -f .agents/skills/theokit-sdk/SKILL.md
-          npx --no-install theokit-skills --target=agents --check
+          npx --no-install theokit-skills --check  # `--target=` is inert on --check (W-10)
 
       - name: Publish with provenance
         if: github.event_name == 'push' || inputs.dry_run == false

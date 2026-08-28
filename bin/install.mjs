@@ -20,7 +20,7 @@ import { createRequire } from "node:module";
 
 import { TARGETS, detectTargets, targetById } from "../lib/targets.mjs";
 import { currentMode, isStableSource, place } from "../lib/install-mode.mjs";
-import { drift, writeManifest } from "../lib/manifest.mjs";
+import { digestOf, drift, readManifest, writeManifest } from "../lib/manifest.mjs";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const version = createRequire(import.meta.url)(join(packageRoot, "package.json")).version;
@@ -128,15 +128,26 @@ for (const target of targets) {
 // ── --check: a CI gate, not an installer ─────────────────────────────────────────────────────
 
 if (options.check) {
-  const state = drift(projectRoot, { version, expected: plan });
+  const state = drift(projectRoot, { version });
   if (state.kind === "current") {
-    console.log(`@theokit/skills: up to date — ${plan.length} skill installation(s) at v${version}.`);
+    // Counted from the manifest, not from `plan`: `plan` is what an install WOULD do here, and
+    // reporting it would state a number about this machine rather than about the install.
+    const installed = readManifest(projectRoot)?.entries.length ?? 0;
+    console.log(`@theokit/skills: up to date — ${installed} skill installation(s) at v${version}.`);
     process.exit(0);
   }
   const reason = {
-    absent: "no manifest found — the skills were never installed here",
+    // Two states share this kind, and the message has to be true of both: no manifest at all, and a
+    // manifest this version cannot read. The old wording ("no manifest found — the skills were never
+    // installed here") asserted two things that are false in the second case, which is the common one
+    // right after a schema bump: the file is right there and the skills ARE installed. (W-06, /review.)
+    absent: "no readable manifest for this version — either the skills were never installed here, or they were installed by a version whose manifest this one cannot read",
     version: `installed from v${state.installed}, this package is v${state.current}`,
     missing: `${state.missing?.length ?? 0} installed path(s) no longer exist`,
+    // The kind this gate existed to report and could not. Until B-002 it compared existence only,
+    // so an edited instruction file passed — the one failure the module's own header calls "worse
+    // than a missing one, because the agent follows it with the same diligence".
+    content: `${state.changed?.length ?? 0} installed skill(s) no longer match this version: ${(state.changed ?? []).join(", ")}`,
   }[state.kind];
   console.error(`@theokit/skills: DRIFT — ${reason}.`);
   console.error("  An instruction file that is out of date is followed as diligently as a current");
@@ -159,7 +170,15 @@ for (const item of plan) {
 if (!options.dryRun) {
   writeManifest(projectRoot, {
     version,
-    entries: results.map((r) => ({ skill: r.skill, target: r.target.id, path: relative(projectRoot, r.path), mode: r.mode })),
+    // `digest` is what makes `--check` able to see a content change. Computed here, at install,
+    // because this is the only moment the tree is known to be correct.
+    entries: results.map((r) => ({
+      skill: r.skill,
+      target: r.target.id,
+      path: relative(projectRoot, r.path),
+      mode: r.mode,
+      digest: digestOf(r.path),
+    })),
   });
 }
 

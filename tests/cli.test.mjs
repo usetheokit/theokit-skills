@@ -6,8 +6,8 @@
  * would go looking for are there and readable.
  */
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -126,4 +126,59 @@ test("--help lists every target and the tools it serves", () => {
   for (const id of ["agents", "claude", "github"]) assert.match(out, new RegExp(id));
   assert.match(out, /Claude Code/);
   assert.match(out, /OpenAI Codex/);
+});
+
+// ── The gate, through the binary a user runs ─────────────────────────────────────────────────────
+//
+// W-02 (/review): deleting content-drift detection outright — `drift()` returning `current`
+// unconditionally — left every test in THIS file green. The unit suite caught it and the CLI suite,
+// which is what ships, did not. The plan declared this integration test and the implementation
+// shipped without it.
+//
+// W-03: the headline defect T1.2 was written to fix — a bare `--check` reporting false DRIFT — had
+// no test at any level, because every `--check` in the suite passed `--target=agents`.
+
+test("a bare --check passes after a targeted install, whatever else the machine has", () => {
+  // Measured before the fix: exit 1, because `--check` rebuilt its expectation from the targets
+  // DETECTED on the machine rather than from the manifest. Anyone who trusted it in CI had to pass
+  // `--target` to make it pass, silently narrowing what was checked.
+  const dir = project();
+  run(dir, ["--target=agents"]);
+
+  const bare = spawnSync(process.execPath, [BIN, "--check"], { cwd: dir, encoding: "utf8" });
+
+  assert.equal(bare.status, 0, `bare --check must not report drift about the machine:\n${bare.stderr}`);
+  assert.match(bare.stdout, /up to date/);
+});
+
+test("--check fails, through the binary, when an installed file is edited", () => {
+  const dir = project();
+  run(dir, ["--target=agents"]);
+  const manifest = JSON.parse(readFileSync(join(dir, ".theokit-skills.json"), "utf8"));
+  const skill = join(dir, manifest.entries[0].path, "SKILL.md");
+
+  appendFileSync(skill, "\n<!-- edited after install -->\n");
+  const drifted = spawnSync(process.execPath, [BIN, "--check"], { cwd: dir, encoding: "utf8" });
+
+  assert.equal(drifted.status, 1);
+  assert.match(drifted.stderr, /no longer match this version/);
+  assert.match(drifted.stderr, new RegExp(manifest.entries[0].skill));
+});
+
+test("installing a second tool keeps the first one inside the gate", () => {
+  // W-01, the BLOCKER: the manifest was replaced rather than merged, so the earlier installation
+  // stayed on disk and left the gate. `--check` answered "up to date — 31" over a tampered file.
+  const dir = project();
+  run(dir, ["--target=agents"]);
+  run(dir, ["--target=claude"]);
+
+  const manifest = JSON.parse(readFileSync(join(dir, ".theokit-skills.json"), "utf8"));
+  const targets = new Set(manifest.entries.map((e) => e.target));
+  assert.deepEqual([...targets].sort(), ["agents", "claude"]);
+
+  const agentsEntry = manifest.entries.find((e) => e.target === "agents");
+  appendFileSync(join(dir, agentsEntry.path, "SKILL.md"), "\n<!-- tampered -->\n");
+  const after = spawnSync(process.execPath, [BIN, "--check"], { cwd: dir, encoding: "utf8" });
+
+  assert.equal(after.status, 1, "the first tool's install must still be checked");
 });
