@@ -42,6 +42,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   artefact recorded it. The new issue shares no wording with the drift issue, because the title is
   the dedup key and an overlap would let one swallow the other. (B-019)
 
+- The drift job's alerting invariants are asserted against the `drift:` job and bound to the step
+  that carries each condition, not against the file as a whole. Two authoring accidents used to ship
+  green: swapping the two conditions between the steps — so a real drift would file "the check could
+  not run" and an install crash would file "skills drifted" — and a step drifting into a second job,
+  where `steps.check` does not exist and the correlation silently breaks. (B-014)
+
 ### Added
 
 ### Changed
