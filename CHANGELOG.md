@@ -15,6 +15,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   including that `--force` is what replaces it. `place()` used that answer to decide whether a re-run
   replaces a link, and nothing tested it. (B-011)
 
+- Mutation coverage of `lib/` rose from **317 to 338 killed mutants**, over an unchanged total of
+  **523** — the detection clauses account for ten of the twenty-one and `alreadyLinked` for six, with
+  five string literals killed incidentally. The denominator is stated because a score can also move
+  by narrowing what is measured, and from the number alone the two are indistinguishable. (B-011)
+
 ### Added
 
 ### Changed

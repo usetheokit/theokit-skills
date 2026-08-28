@@ -231,3 +231,25 @@ test("a plain directory is not mistaken for a link", () => {
   assert.equal(result.mode, "copy", "an existing directory is reported as what it is");
   assert.equal(result.changed, false);
 });
+
+test("a stale link and a correct one are reported identically — pinned, not endorsed", () => {
+  // F-2 (/review, LOW): `place()` returns a byte-identical `{mode:"link", changed:false}` whether the
+  // existing link is correct or points at a different package, and the stale case keeps serving the
+  // old content. The reviewer confirmed the reading is fair — `--help` says `--force  replace what is
+  // already there`, so leaving it alone IS the contract — and then found that nothing pinned the
+  // reporting half, so the ambiguity could be made worse without a test noticing.
+  //
+  // This asserts the CURRENT behaviour so a change to it is deliberate. It does not endorse it.
+  const { source, dest } = twoSources();
+  place(source.a, dest, { preferLink: true });
+
+  const correct = place(source.a, dest, { preferLink: true });
+  const stale = place(source.b, dest, { preferLink: true });
+
+  assert.deepEqual(stale, correct, "identical today — if this ever differs, it was a decision");
+  assert.equal(
+    readFileSync(join(dest, "SKILL.md"), "utf8"),
+    "from a",
+    "and the stale case keeps serving the old content, which is what --check exists to catch",
+  );
+});
