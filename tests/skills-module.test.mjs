@@ -102,3 +102,46 @@ test("the allowlisted skills still yield 4, 5 and 4 blocks — the change is add
     [4, 5, 4],
   );
 });
+
+// ── /review of the widening: four forms it still could not see ───────────────────────────────────
+
+test("`export * from` is a taught import", () => {
+  // F-1: the STATEMENT alternation required `* as ident` or a bare identifier before `from`, and
+  // `export *` is neither. A skill teaching `export * from "@theokit/newpkg"` would leave every gate
+  // green over a package none of them looked at — the same direction B-017 exists to close.
+  assert.deepEqual(
+    [...importsIn('export * from "@theokit/sdk";\n')].map((i) => i.specifier),
+    ["@theokit/sdk"],
+  );
+});
+
+test("a side-effect import is a taught import", () => {
+  // F-1, second half: `import "@theokit/sdk/register";` binds no name and matched nothing.
+  assert.deepEqual(
+    [...importsIn('import "@theokit/sdk/register";\n')].map((i) => i.specifier),
+    ["@theokit/sdk/register"],
+  );
+});
+
+test("a mixed default-and-braced import keeps BOTH halves", () => {
+  // F-2: `import d, { N } from "…"` was dropped ENTIRELY — including the braced half, which is the
+  // form the corpus does use. The comma broke both patterns, so the most likely form to appear in
+  // real documentation was the one where the widening looked like it should help and did not.
+  const found = [...importsIn('import theokit, { Agent, Tool } from "@theokit/sdk";\n')];
+
+  assert.deepEqual(found.map((i) => i.specifier), ["@theokit/sdk"]);
+  assert.deepEqual(found.flatMap((i) => i.names).sort(), ["Agent", "Tool", "theokit"]);
+});
+
+test("a deprecated fence excludes the NEW import forms too, not only the braced one", () => {
+  // F-6: the exclusion was asserted for the new FENCE forms and never for the new IMPORT forms —
+  // the one direction of that interaction nothing pinned, in the very interaction the commit gives
+  // as the reason `fencePattern()` had to be unified.
+  for (const body of [
+    '```typescript\nimport gone from "@theokit/gone";\n```',
+    '~~~ts\nimport * as gone from "@theokit/gone";\n~~~',
+    '````typescript\nexport { Gone } from "@theokit/gone";\n````',
+  ]) {
+    assert.deepEqual([...importsIn(`❌ Do not:\n\n${body}\n`)], [], body.slice(0, 24));
+  }
+});

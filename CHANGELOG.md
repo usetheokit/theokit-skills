@@ -27,9 +27,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   had their own fence pattern, and widening only one would have made a skill fail for correctly
   showing what not to do. One pattern now, used by both. (B-024)
 
+- `export * from`, side-effect `import "pkg"` and mixed `import d, { N } from` count as taught too.
+  The mixed form was the sharpest of the three: it dropped the braced half as well, which is the form
+  the skills actually use — so a single documentation habit could have hidden a real symbol. Zero of
+  the three exist in the corpus today. (B-017)
+
+- The guard against a second corpus reader now covers fence extractors, not only import extractors.
+  A duplicated fence extractor is the divergence that actually recurred in this repository, and it
+  was the one the guard never looked for. (B-016)
+
 ### Added
 
 ### Changed
+
+- The `extractor-oracle:` escape is scoped to the lines around the extractor it excuses rather than
+  to the whole file. One marker exempted every extractor in the file that carried it, while the
+  comment beside it stated the exception had to be declared on the line — honest about why and wrong
+  about where. (B-016)
 
 ### Deprecated
 

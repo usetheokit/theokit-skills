@@ -90,7 +90,12 @@ export function liveTypescriptBlocks(text) {
  * Capture groups: 1 indent, 2 the fence run, 3 the language, 4 the body.
  */
 function fencePattern() {
-  return /^([ \t]*)(`{3,}|~{3,})[ \t]*(\w+)?[^\n]*\n([\s\S]*?)^[ \t]*\2`*~*[ \t]*$/gm;
+  // The trailing `` `* `` is load-bearing: CommonMark lets a closing fence be LONGER than the
+  // opener, and it is what makes a four-backtick block close at its own fence instead of at the
+  // inner ```. A `~*` sat beside it with no such motivation — a mixed closer is not a valid fence
+  // pair, and accepting `` ```~~~ `` as a close was an unexplained clause in the one regex whose
+  // three previous unexplained clauses are the subject of this change. Removed. (F-8, /review.)
+  return /^([ \t]*)(`{3,}|~{3,})[ \t]*(\w+)?[^\n]*\n([\s\S]*?)^[ \t]*\2`*[ \t]*$/gm;
 }
 
 function deprecatedRanges(text) {
@@ -117,7 +122,9 @@ export function importsIn(text, { includeDeprecated = false } = {}) {
   const skip = includeDeprecated ? [] : deprecatedRanges(text);
   const found = [];
   // Braced named imports — the overwhelming majority, and the only form the corpus uses today (90 of
-  // them, measured).
+  // them @theokit-scoped, 110 counting every specifier — both measured. The oracle in
+  // skills-module.test.mjs asserts the scoped number, so a reader reconciling it against a raw
+  // grep finds 110; the scope was missing from this sentence and had to be re-derived..
   for (const m of text.matchAll(/import\s*(?:type\s+)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/g)) {
     if (skip.some(([a, b]) => m.index >= a && m.index < b)) continue;
     const names = m[1]
@@ -134,11 +141,34 @@ export function importsIn(text, { includeDeprecated = false } = {}) {
   // Anchored to the start of a line, which is the whole difference between a statement and prose:
   // "Do NOT import them from `@theokit/sdk/internal/persistence`" matched a first draft and produced
   // a phantom taught symbol, which would fail a gate against a package that never exported it.
-  const STATEMENT = /^[ \t]*(?:import|export)\s+(?:type\s+)?(?:(\*\s*as\s+[A-Za-z_$][\w$]*)|([A-Za-z_$][\w$]*))\s+from\s*["']([^"']+)["']/gm;
-  for (const m of text.matchAll(STATEMENT)) {
+  // A default or namespace binding, optionally followed by a braced list. The `(?:,\s*\{([^}]*)\})?`
+  // is what keeps a MIXED import whole: `import d, { N } from "…"` used to be dropped ENTIRELY —
+  // including the braced half, which IS the form this corpus uses — because the comma broke the
+  // braced pattern and the bare-identifier pattern alike. (F-2, /review.)
+  const BINDING = /^[ \t]*(?:import|export)\s+(?:type\s+)?(?:(\*\s*as\s+[A-Za-z_$][\w$]*)|([A-Za-z_$][\w$]*))(?:\s*,\s*\{([^}]*)\})?\s+from\s*["']([^"']+)["']/gm;
+  for (const m of text.matchAll(BINDING)) {
     if (skip.some(([a, b]) => m.index >= a && m.index < b)) continue;
-    const name = (m[1] ?? m[2] ?? "").replace(/^\*\s*as\s+/, "").trim();
-    if (name) found.push({ specifier: m[3], names: [name] });
+    const names = [(m[1] ?? m[2] ?? "").replace(/^\*\s*as\s+/, "").trim()];
+    for (const n of (m[3] ?? "").split(",")) {
+      const clean = n.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0]?.trim();
+      if (clean && /^[A-Za-z_$][\w$]*$/.test(clean)) names.push(clean);
+    }
+    const kept = names.filter(Boolean);
+    if (kept.length > 0) found.push({ specifier: m[4], names: kept });
+  }
+
+  // `export * from "…"` binds no local name, so no identifier pattern reaches it. (F-1.)
+  for (const m of text.matchAll(/^[ \t]*export\s*\*\s*from\s*["']([^"']+)["']/gm)) {
+    if (skip.some(([a, b]) => m.index >= a && m.index < b)) continue;
+    found.push({ specifier: m[1], names: ["*"] });
+  }
+
+  // A side-effect import binds nothing at all — `import "@theokit/sdk/register";`. It teaches a
+  // SPECIFIER without teaching a symbol, and the specifier is what the drift and resolution gates
+  // check. (F-1.)
+  for (const m of text.matchAll(/^[ \t]*import\s*["']([^"']+)["']\s*;?[ \t]*$/gm)) {
+    if (skip.some(([a, b]) => m.index >= a && m.index < b)) continue;
+    found.push({ specifier: m[1], names: [] });
   }
 
   // `export { X } from "…"` — a re-export with braces, which the first loop skips because it
