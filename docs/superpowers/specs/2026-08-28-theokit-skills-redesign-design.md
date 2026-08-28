@@ -86,11 +86,18 @@ The coupling between `theokit-examples` and `theokit-skills` is exactly two arti
     { "id": "query-memory",             "explains": "Reading back what was remembered" }
   ],
   "notCovered": ["external adapters: mem0, honcho, supermemory"],
-  "credentials": ["ANTHROPIC_API_KEY"]
+  "credentials": ["ANTHROPIC_API_KEY"],
+  "evidence": [
+    {
+      "command": "npm start -- demo:poisoned",
+      "claims": "A planted memory entry drove the action in 2 of 6 runs without the permission layer, 0 of 6 with it."
+    }
+  ]
 }
 ```
 
-`teaches` names export subpaths, not whole packages: that is what keeps `references/api.md` scoped.
+`regions` is ordered: array order is teaching order. `teaches` names export subpaths, not whole
+packages: that is what keeps `references/api.md` scoped.
 `notCovered` is required — the `theokit-examples` README already demands that an example state what
 the capability does not give you, and that section is what stops the agent from answering beyond the
 evidence.
@@ -215,16 +222,110 @@ skill for an uninstalled package, without a file remembering what was installed.
 installing; staying silent does not. That information, delivered at install time, is what replaces
 `--check`.
 
-## 6. Changes to `theokit-examples`
+## 6. The example contract (`theokit-examples`)
 
-Additive, leaving the current structure intact:
+The generator can only be simple if the examples are uniform. Fifty examples in fifty shapes would
+turn the extractor into a pile of special cases, and every special case is a chance to extract the
+wrong thing quietly. Rigidity here is what buys a dumb generator, and a dumb generator is the one
+that cannot surprise you.
 
-1. One `skill.json` per example.
-2. `#region skill:<id>` markers in the files CI already executes.
-3. A CI check that manifest and regions agree with each other — so an example breaks in the repository
-   where it was edited, not at generation time, days later.
+This contract lives in `theokit-examples/EXAMPLE-CONTRACT.md` with a script that checks it in that
+repository's CI, so a malformed example breaks where it was written rather than at generation time,
+days later.
 
-That repository has no initial commit on `workspace` yet; these land with it.
+### 6.1 Discovery
+
+An example is any directory containing a `skill.json`. That is the whole rule; nothing else is an
+example.
+
+### 6.2 Location
+
+`<category>/<slug>/`, where `category` comes from a closed vocabulary taken from the repository's
+README map: `build-agents`, `capabilities`, `connections`, `extensibility`, `component-libraries`,
+`backend-di`, `framework-plugins`. `slug` is `skill.json.skill` without its `theokit-` prefix.
+
+### 6.3 Required files
+
+| File | Checked requirement |
+|---|---|
+| `skill.json` | validates against the schema in 5.2 |
+| `package.json` | `private: true`, `type: "module"`, name `theokit-example-<slug>`, `start` and `typecheck` scripts, and every `@theokit/*` dependency pinned exactly (`4.61.0` — never `^`, `~` or `latest`) |
+| `package-lock.json` | committed, so the run is reproducible |
+| `tsconfig.json` | `strict: true` |
+| `README.md` | present, and states the credentials the example needs |
+| `src/` | at least one file; regions live only here |
+| `.gitignore` | ignores `node_modules/` and `dist/` |
+
+### 6.4 Regions carry prose, not just code
+
+Everything inside a region is copied verbatim — **comments included**. This is not a detail; it is
+where the most valuable content in the repository lives.
+
+The `capabilities/memory` example already documents, at the point of use, that `agent.send()` returns
+a handle rather than a result and that reading text off it prints nothing while the memory file is
+written correctly; that `PermissionEngine` takes its rules positionally, so the object form
+typechecks nowhere and silently builds an engine with no usable rule list; and that a planted memory
+entry drove the action it described in 2 of 6 runs without the permission layer and 0 of 6 with it.
+
+None of that is derivable from a type signature. A model asked to produce it would produce something
+weaker and equally confident. So the pipeline must carry it rather than restate it: the author
+decides where the region opens, and if it opens above the doc comment, the doc comment travels with
+the code. The LLM writes only the connective prose between blocks.
+
+Region rules, all checked:
+
+- Markers are `// #region skill:<id>` and `// #endregion`.
+- `<id>` is kebab-case and unique within the example.
+- Regions live under `src/`, never nest, and never span files.
+- Every id in `skill.json.regions` exists in the code, **and** every region in the code is declared
+  in the manifest. Both directions, because a slip in either one is silent otherwise.
+- Array order in `skill.json.regions` is the teaching order.
+
+### 6.5 Runnability
+
+`npm start` with no arguments prints usage and exits 0. That gives CI a smoke test needing no
+credential, and the existing `memory` CLI already behaves this way. The full path runs wherever a
+credential is available, declared in `skill.json.credentials` and documented in the example's README.
+
+The driver file — the CLI or entrypoint named by the `start` script — is never extracted into regions.
+It ships whole in `references/example.md`, so an agent that needs it finds it instead of inventing it.
+
+### 6.6 Evidence commands
+
+An example may ship commands that prove the claims its prose makes, and `memory` already does:
+`demo:poisoned` and `verify:permissions`. Declared in the manifest, they let the generated skill point
+an agent at a check rather than ask it to take a sentence on trust.
+
+```jsonc
+"evidence": [
+  {
+    "command": "npm start -- demo:poisoned",
+    "claims": "A planted memory entry drove the action in 2 of 6 runs without the permission layer, 0 of 6 with it."
+  }
+]
+```
+
+### 6.7 Forbidden
+
+- A range or `latest` on any `@theokit/*` dependency.
+- Resolving theokit through a workspace or a local checkout. The repository exists outside the SDK
+  precisely so that it cannot cheat; an example that resolves through a workspace tests the
+  repository it lives in, not the experience of someone who typed `npm install`.
+- Regions that nest or span files.
+- Any text in a language other than English.
+
+### 6.8 Bringing `capabilities/memory` up to the contract
+
+It is the only runnable example and the source of the first skill, so it is also the contract's first
+test: a standard its only subject fails is a document nobody follows.
+
+It already satisfies the structural half — exact pin on `@theokit/sdk@4.61.0`, `strict` tsconfig,
+committed lockfile, correct package name, `start` and `typecheck` scripts, `.gitignore`. Three things
+are missing: `skill.json`, the region markers, and its own `README.md`. That last one is a promise
+already outstanding — the repository README states that each example says which credentials it needs,
+and this example has nowhere to say it.
+
+`theokit-examples` has no initial commit on `workspace` yet, so this lands with it.
 
 ## 7. What is removed
 
@@ -250,6 +351,8 @@ They return, covering behavior rather than meta-machinery:
   touches nothing outside `theokit-*`.
 - **Version divergence**: the output names both versions.
 - **Idempotent install**: running twice produces the same tree.
+- **Example-contract checker**: each rule in section 6 rejects a fixture that breaks it, and the
+  real `capabilities/memory` passes unmodified.
 
 ## 9. First delivery
 
