@@ -20,6 +20,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Fixed
 
+- The gate is now exercised through the binary a user actually runs, not only through the library
+  function underneath it. Deleting content-drift detection outright used to leave every end-to-end
+  test green — the unit suite caught it and the shipped surface did not. (B-002)
+
 - **`--check` could report "up to date" over a tampered skill.** Installing for a second tool
   replaced the manifest instead of adding to it, and since the manifest became the sole expectation,
   the first tool's installation left the gate entirely. Reproduced: install for Codex, then for
