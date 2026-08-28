@@ -34,23 +34,17 @@
  */
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 import { importsIn, skillFiles } from "./_skills.mjs";
+import { compile, installedTypePaths } from "./_typecheck.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const skillsDir = join(root, "skills");
-const ts = createRequire(import.meta.url)("typescript");
 
 /** Packages installed here, so the gate can say what it did and did not check. */
-function installedPackages() {
-  const scope = join(root, "node_modules", "@theokit");
-  if (!existsSync(scope)) return new Set();
-  return new Set(readdirSync(scope).map((n) => `@theokit/${n}`));
-}
 
 /**
  * Fenced blocks a skill deliberately shows as WRONG.
@@ -61,25 +55,9 @@ function installedPackages() {
  * behind an ordinary sentence containing "before".
  */
 /** Declared subpath → its built `.d.ts`, for an installed package. */
-function typePaths(pkg) {
-  const dir = join(root, "node_modules", ...pkg.split("/"));
-  const manifest = join(dir, "package.json");
-  if (!existsSync(manifest)) return {};
-  const meta = JSON.parse(readFileSync(manifest, "utf8"));
-  const out = {};
-  for (const [sub, cond] of Object.entries(meta.exports ?? {})) {
-    const types = cond?.import?.types ?? cond?.types;
-    if (typeof types !== "string") continue;
-    const file = join(dir, types);
-    if (existsSync(file)) out[sub === "." ? pkg : `${pkg}${sub.slice(1)}`] = [file];
-  }
-  return out;
-}
 
 test("every @theokit symbol a skill teaches resolves in the installed package", () => {
-  const installed = installedPackages();
-  const paths = {};
-  for (const pkg of installed) Object.assign(paths, typePaths(pkg));
+  const paths = installedTypePaths();
   assert.ok(Object.keys(paths).length > 0, "no installed @theokit package has built declarations — run `npm install`");
 
   const probes = [];
@@ -97,44 +75,19 @@ test("every @theokit symbol a skill teaches resolves in the installed package", 
   assert.ok(probes.length > 0, "no checkable import found — the extractor is broken, not the skills");
 
   // One in-memory program over synthetic probe files: no temp directory, no subprocess, no
-  // platform-specific executable name.
-  const sources = new Map(
+  // platform-specific executable name. The compiler itself lives in `_typecheck.mjs` — B-003 needs
+  // the same machinery for example BODIES, and two copies of it would drift apart exactly as the
+  // two import extractors did before B-008.
+  const sources = Object.fromEntries(
     probes.map((p, i) => [`p${i + 1}.ts`, `import { ${p.names.join(", ")} } from "${p.specifier}";\n`]),
   );
-  const options = {
-    noEmit: true,
-    strict: false,
-    skipLibCheck: true,
-    target: ts.ScriptTarget.ES2022,
-    module: ts.ModuleKind.ESNext,
-    moduleResolution: ts.ModuleResolutionKind.Bundler,
-    types: [],
-    baseUrl: root,
-    // pnpm and npm both isolate `node_modules`, so a probe compiled without an explicit map cannot
-    // resolve the MODULE — and a module that does not resolve reports every name as missing, which
-    // reads exactly like the defect being looked for.
-    paths,
-  };
-  const host = ts.createCompilerHost(options, true);
-  const readOriginal = host.getSourceFile.bind(host);
-  host.getSourceFile = (name, languageVersion, ...rest) => {
-    const synthetic = sources.get(name);
-    return synthetic === undefined
-      ? readOriginal(name, languageVersion, ...rest)
-      : ts.createSourceFile(name, synthetic, languageVersion, true);
-  };
-  host.fileExists = (name) => sources.has(name) || existsSync(name);
-  host.readFile = (name) => sources.get(name) ?? (existsSync(name) ? readFileSync(name, "utf8") : undefined);
 
-  const program = ts.createProgram([...sources.keys()], options, host);
   const findings = [];
-  for (const diagnostic of program.getSemanticDiagnostics()) {
-    const name = diagnostic.file?.fileName;
-    const index = name === undefined ? -1 : Number(/^p(\d+)\.ts$/.exec(name)?.[1] ?? 0) - 1;
+  for (const diagnostic of compile(sources, { semanticOnly: true })) {
+    const index = Number(/^p(\d+)\.ts$/.exec(diagnostic.file)?.[1] ?? 0) - 1;
     const probe = probes[index];
     if (probe === undefined) continue;
-    const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, " ");
-    findings.push(`${probe.file.replace(`${root}/`, "")}  ${probe.specifier}  ::  ${message}`);
+    findings.push(`${probe.file.replace(`${root}/`, "")}  ${probe.specifier}  ::  ${diagnostic.message}`);
   }
 
   // Reported on success too: a gate that silently narrows its own scope claims coverage it lacks.
