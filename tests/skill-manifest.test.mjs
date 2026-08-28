@@ -68,3 +68,14 @@ test("rejects an evidence entry missing its claim", () => {
   assert.ok(error instanceof ManifestError);
   assert.equal(error.field, "evidence");
 });
+
+test("rejects an evidence value that is not an array", () => {
+  const error = captureError(() => parseManifest({ ...VALID, evidence: { command: "a", claims: "b" } }, "p"));
+  assert.ok(error instanceof ManifestError);
+  assert.equal(error.field, "evidence");
+});
+
+test("accepts a bare package root in teaches, which the memory example relies on", () => {
+  const manifest = parseManifest({ ...VALID, teaches: ["@theokit/sdk"] }, "p");
+  assert.deepEqual(manifest.teaches, ["@theokit/sdk"]);
+});
