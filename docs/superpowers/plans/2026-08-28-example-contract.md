@@ -48,9 +48,9 @@
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `parseRegions(source: string, file: string) => Region[]` where `Region` is `{ id: string, file: string, startLine: number, endLine: number, code: string }`; `dedent(code: string) => string`; `class RegionError extends Error` with `.file` and `.line`.
+- Produces: `parseRegions(source: string, file: string) => Region[]` where `Region` is `{ id: string, file: string, startLine: number, endLine: number, code: string }`; `class RegionError extends Error` with `.file` and `.line`.
 
-`code` is the raw text between the markers, markers excluded. `dedent` removes the smallest indentation common to all non-blank lines. Both the checker and, later, the generator must apply `dedent` before comparing or publishing, so that gate G1 compares like with like.
+`code` is the raw text between the markers, markers excluded. It is NOT dedented here: the checker never compares code text, so the normalisation gate G1 needs belongs to the generator plan that introduces G1. Building it now would be a helper with no caller.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -60,7 +60,17 @@ Create `tests/regions.test.mjs`:
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { dedent, parseRegions, RegionError } from "../lib/regions.mjs";
+import { parseRegions, RegionError } from "../lib/regions.mjs";
+
+/** node:assert's throws() returns undefined, so capture the error to assert on its fields. */
+function captureError(fn) {
+  try {
+    fn();
+  } catch (error) {
+    return error;
+  }
+  assert.fail("expected the call to throw");
+}
 
 test("parses one region and excludes its markers", () => {
   const source = [
@@ -97,7 +107,8 @@ test("keeps comments inside a region, because that is where the hard-won prose l
 test("a region that is never closed names the file and the opening line", () => {
   const source = ["// #region skill:orphan", "const a = 1;"].join("\n");
 
-  const error = assert.throws(() => parseRegions(source, "src/a.ts"), RegionError);
+  const error = captureError(() => parseRegions(source, "src/a.ts"));
+  assert.ok(error instanceof RegionError);
   assert.equal(error.file, "src/a.ts");
   assert.equal(error.line, 1);
   assert.match(error.message, /orphan/);
@@ -111,24 +122,20 @@ test("a nested region is rejected, naming both ids", () => {
     "// #endregion",
   ].join("\n");
 
-  const error = assert.throws(() => parseRegions(source, "src/a.ts"), RegionError);
+  const error = captureError(() => parseRegions(source, "src/a.ts"));
+  assert.ok(error instanceof RegionError);
   assert.match(error.message, /inner/);
   assert.match(error.message, /outer/);
 });
 
 test("an #endregion with no open region is rejected", () => {
-  const error = assert.throws(() => parseRegions("// #endregion", "src/a.ts"), RegionError);
+  const error = captureError(() => parseRegions("// #endregion", "src/a.ts"));
+  assert.ok(error instanceof RegionError);
   assert.equal(error.line, 1);
 });
 
 test("a non-kebab-case id is not recognised as a region marker", () => {
   assert.deepEqual(parseRegions("// #region skill:Create_Agent", "src/a.ts"), []);
-});
-
-test("dedent removes the common indentation and leaves relative indentation intact", () => {
-  const code = ["    const a = 1;", "", "      const b = 2;"].join("\n");
-
-  assert.equal(dedent(code), ["const a = 1;", "", "  const b = 2;"].join("\n"));
 });
 ```
 
@@ -209,31 +216,12 @@ export function parseRegions(source, file) {
 
   return regions;
 }
-
-/**
- * Remove the indentation every non-blank line shares.
- *
- * Regions are usually cut from inside a function, so their raw text carries the enclosing
- * indentation. Both the checker and the generator dedent before comparing, so that gate G1
- * compares the same normalisation on both sides.
- */
-export function dedent(code) {
-  const lines = code.split("\n");
-  const indents = lines
-    .filter((line) => line.trim().length > 0)
-    .map((line) => line.length - line.trimStart().length);
-
-  if (indents.length === 0) return code;
-
-  const common = Math.min(...indents);
-  return lines.map((line) => (line.trim().length === 0 ? line : line.slice(common))).join("\n");
-}
 ```
 
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `node --test tests/regions.test.mjs`
-Expected: PASS, 7 tests.
+Expected: PASS, 6 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -266,6 +254,16 @@ import assert from "node:assert/strict";
 
 import { ManifestError, parseManifest } from "../lib/skill-manifest.mjs";
 
+/** node:assert's throws() returns undefined, so capture the error to assert on its fields. */
+function captureError(fn) {
+  try {
+    fn();
+  } catch (error) {
+    return error;
+  }
+  assert.fail("expected the call to throw");
+}
+
 const VALID = {
   skill: "theokit-memory",
   teaches: ["@theokit/sdk/memory"],
@@ -293,33 +291,32 @@ test("preserves region order, because array order is teaching order", () => {
 });
 
 test("rejects a skill name without the theokit- prefix, naming the field", () => {
-  const error = assert.throws(() => parseManifest({ ...VALID, skill: "memory" }, "p"), ManifestError);
+  const error = captureError(() => parseManifest({ ...VALID, skill: "memory" }, "p"));
+  assert.ok(error instanceof ManifestError);
   assert.equal(error.field, "skill");
 });
 
 test("rejects an empty notCovered, because the honest gap is the point", () => {
-  const error = assert.throws(() => parseManifest({ ...VALID, notCovered: [] }, "p"), ManifestError);
+  const error = captureError(() => parseManifest({ ...VALID, notCovered: [] }, "p"));
+  assert.ok(error instanceof ManifestError);
   assert.equal(error.field, "notCovered");
 });
 
 test("rejects a teaches entry that is not an export subpath of a @theokit package", () => {
-  const error = assert.throws(() => parseManifest({ ...VALID, teaches: ["lodash"] }, "p"), ManifestError);
+  const error = captureError(() => parseManifest({ ...VALID, teaches: ["lodash"] }, "p"));
+  assert.ok(error instanceof ManifestError);
   assert.equal(error.field, "teaches");
 });
 
 test("rejects a region id that is not kebab-case, because no marker could ever match it", () => {
-  const error = assert.throws(
-    () => parseManifest({ ...VALID, regions: [{ id: "Create_Agent", explains: "x" }] }, "p"),
-    ManifestError,
-  );
+  const error = captureError(() => parseManifest({ ...VALID, regions: [{ id: "Create_Agent", explains: "x" }] }, "p"));
+  assert.ok(error instanceof ManifestError);
   assert.equal(error.field, "regions");
 });
 
 test("rejects an evidence entry missing its claim", () => {
-  const error = assert.throws(
-    () => parseManifest({ ...VALID, evidence: [{ command: "npm start" }] }, "p"),
-    ManifestError,
-  );
+  const error = captureError(() => parseManifest({ ...VALID, evidence: [{ command: "npm start" }] }, "p"));
+  assert.ok(error instanceof ManifestError);
   assert.equal(error.field, "evidence");
 });
 ```
@@ -711,8 +708,8 @@ export function checkExample(dir) {
       }
     }
 
-    const declared = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
-    for (const [name, range] of Object.entries(declared)) {
+    const allDependencies = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
+    for (const [name, range] of Object.entries(allDependencies)) {
       if (!name.startsWith("@theokit/")) continue;
       if (!EXACT_VERSION.test(range)) {
         add("exact-pin", `${name} must be pinned exactly, found "${range}"`);
@@ -821,12 +818,12 @@ Expected: FAIL — the five new tests find none of the new rules.
 
 - [ ] **Step 3: Write the implementation**
 
-Add to the head of `lib/example-contract.mjs`:
+Extend the existing import statements at the head of `lib/example-contract.mjs` rather than adding
+a second import from the same module — `node:fs` becomes
+`import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";` and `node:path` becomes
+`import { basename, dirname, join, relative } from "node:path";`. Then add:
 
 ```js
-import { readdirSync, statSync } from "node:fs";
-import { relative } from "node:path";
-
 import { parseRegions, RegionError } from "./regions.mjs";
 
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".js", ".mjs", ".jsx"]);
@@ -1041,7 +1038,7 @@ Run: `node --test tests/check-example.test.mjs`
 Expected: PASS, 3 tests.
 
 Then run the whole suite: `npm test`
-Expected: PASS, 32 tests across four files.
+Expected: PASS, 31 tests across four files.
 
 - [ ] **Step 5: Commit**
 
