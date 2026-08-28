@@ -16,9 +16,70 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Security
 
-## [Unreleased]
+## [0.7.0] - 2026-08-27
+
+### Changed
+
+- The README says what a skill is for. Measured: the skills teach 176 symbols across 29 subpaths
+  while 545 exported symbols are taught by nothing — a ratio that looks alarming until you know a
+  `SKILL.md` is always-loaded context, where every symbol costs tokens in every conversation whether
+  or not it is needed. The gate runs in the other direction only, and that count is 0: nothing a
+  skill teaches is missing from its package. The section states the limit too — nobody has measured
+  which exports matter, and nothing proposes a new one for inclusion. (B-006)
+
+- The README said the repository ships one skill. It ships 31.
+
+- **`--check` now compares content.** It used to compare existence only, so an installed `SKILL.md`
+  that had been edited passed as healthy — measured with a control: an intact install exits 0, a
+  deleted skill directory exits 1, and an edited instruction file also exited **0**. The command the
+  help text calls *"fail if what is installed drifted from this version (CI)"* detected a directory
+  disappearing and nothing else. The comparison is over the whole skill directory, so a file under
+  `references/` is covered by the same mechanism rather than a second one. (B-002)
+
+- **`--check` stopped reporting drift about the machine it runs on.** Its expectation came from the
+  *installation plan* — what an install would do here, derived from which tools are detected — rather
+  than from the manifest, which records what was actually installed. So a bare `--check` after a
+  `--target=agents` install exited 1 on any machine that also had `~/.claude`, for paths that were
+  never installed. Anyone who trusted it in CI had to pass `--target` to make it pass, which silently
+  narrowed what was checked. (B-002)
+
+- The manifest schema is `2`. A manifest written by an older version is refused as `absent` rather
+  than half-checked — its own contract has always been *"a bump means wipe and reinstall, never
+  silently migrate"*, and treating a missing digest as "content unknown, skip the check" would have
+  made the gate weakest exactly on the installs that predate the fix. One `npx @theokit/skills
+  --force` after upgrading. (B-002)
+
 
 ### Fixed
+
+- After a schema upgrade the failure message said "no manifest found — the skills were never
+  installed here" while the file sat right there with 31 skills installed. It now describes both
+  states it actually covers. (B-002)
+
+- The CI smoke passed `--target=` flags to `--check`, which have been inert on that path since the
+  check started reading the manifest — a line that read as if it scoped something. (B-002)
+
+- The gate is now exercised through the binary a user actually runs, not only through the library
+  function underneath it. Deleting content-drift detection outright used to leave every end-to-end
+  test green — the unit suite caught it and the shipped surface did not. (B-002)
+
+- **`--check` could report "up to date" over a tampered skill.** Installing for a second tool
+  replaced the manifest instead of adding to it, and since the manifest became the sole expectation,
+  the first tool's installation left the gate entirely. Reproduced: install for Codex, then for
+  Claude Code, edit a file under `.agents/skills/` — the answer was `up to date — 31` and exit 0. The
+  31 was true of the manifest and false of the tree. The manifest now merges by target and skill; a
+  version change still replaces wholesale. (B-002)
+
+- A manifest written on Windows reported every entry as missing when read on Linux. `relative()`
+  produces backslashes, and POSIX path joining treats them as part of a filename — while the
+  manifest is explicitly meant to be committed alongside the skills it describes, so reading it on
+  another operating system is the normal case. (B-002)
+
+- An unreadable file inside a skill directory aborted the install *after* every skill was placed and
+  *before* the manifest was written, leaving an installed tree that the next `--check` called "never
+  installed here". Such a file is now folded into the digest as the error it is — a real state of
+  the tree, and one the check should notice. (B-002)
+
 
 - Two `.sort()` calls in the coverage script now carry explicit comparators. One of them sorted an
   array of `[name, version]` pairs by the stringified pair rather than by name — correct today, and

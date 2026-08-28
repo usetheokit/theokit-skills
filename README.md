@@ -86,13 +86,33 @@ you have relocated your config writes a directory the tool never reads.
 
 ## What ships
 
-Every skill in the TheoKit ecosystem lives under `skills/`. Today that is `theokit-sdk`, which
-covers `Agent.create` / `Agent.prompt`, `Tool.create` with Zod, streaming `SDKMessage` events,
-`run.wait` / `cancel`, MCP servers, subagents, cron, memory and context, disposal, and the
-`TheokitAgentError` hierarchy.
+Every skill in the TheoKit ecosystem lives under `skills/` — 31 of them, covering the SDK core
+(`Agent.create` / `Agent.prompt`, `Tool.create` with Zod, streaming `SDKMessage` events,
+`run.wait` / `cancel`, the `TheokitAgentError` hierarchy), the subsystems that ship beside it
+(persistence, compaction, filesystem, sandbox, cron, memory, workflows, evaluation, budget), the
+dependency-injection packages, and the gateway adapters for Discord, Slack and Telegram.
 
-The content is generated from `@theokit/sdk`'s own per-module sources and gated against drift, so a
+The content is generated from each package's own per-module sources and gated against drift, so a
 bad sync cannot publish a skill teaching a removed API or a subpath that does not exist.
+
+### A skill is curated, not a dump of the API
+
+Measured 2026-08-27: the skills teach **176 distinct symbols across 29 subpaths**, while **545
+exported symbols are taught by no skill at all** — `@theokit/sdk`'s root alone exports 387 and the
+skills import 16 of them.
+
+That gap is deliberate, and it is worth saying so plainly because the ratio looks alarming until you
+know what a `SKILL.md` is for. It is **always-loaded context**: every symbol written into it costs
+tokens in every conversation that loads the skill, whether or not that conversation needs it. An
+agent given the whole surface is not better informed — it is more expensive and less directed.
+
+So the gate runs in the other direction, and only in that direction: **nothing a skill teaches may
+be missing from the package.** Measured across the 23 sampled subpaths, that count is **0**.
+
+What this does *not* claim is that the curated 176 are the right 176. Nobody has measured which
+exports matter, and nothing currently proposes a newly published export for inclusion — the drift
+job watches for symbols that disappear, not for ones that appear. That is a known limit, not an
+oversight.
 
 ## License
 
