@@ -163,3 +163,53 @@ test("a dangling link is missing, and never a crash", () => {
   assert.equal(state.kind, "missing");
   assert.deepEqual(state.missing, ["skills/theokit-x"]);
 });
+
+// ── Properties of the digest that nothing asserted ────────────────────────────────────────────────
+//
+// Found by mutation testing, not by inspection: dropping the `.sort()` at manifest.mjs:98, or the
+// `hash.update(rel)` at :111, or the `/` separator at :102, all survived the suite. Each is a real
+// property of a value that gets COMMITTED in a manifest and compared on another machine — an
+// unstable digest is a gate that fails for the wrong reason.
+//
+// These are characterization tests: the code already has the properties, and nothing held it to
+// them. Each was verified to go red against its own mutation before being kept.
+
+// NOT TESTED, and the reason is worth more than a green test: the digest's stability across
+// filesystems. `manifest.mjs:98` sorts entries because `readdirSync` order is filesystem-dependent,
+// and a digest that varies by machine is a gate that fails for the wrong reason — the value is
+// COMMITTED in a manifest and compared elsewhere. Measured on this machine: `readdirSync` already
+// returns lexicographic order, so removing the `.sort()` changes nothing observable here. A test
+// was written for it and DELETED after mutation testing showed it killed nothing: it asserted a
+// property it could not exercise, which is the tautology class this repository keeps paying for.
+// Exercising it needs a filesystem that returns unsorted entries (APFS, some Windows volumes) or a
+// mocked `node:fs`. Registered rather than faked.
+
+test("renaming a file changes the digest, even when its content does not", () => {
+  const root = scratch();
+  const dir = join(root, "skill");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "SKILL.md"), "identical bytes");
+  const before = digestOf(dir);
+
+  rmSync(join(dir, "SKILL.md"));
+  writeFileSync(join(dir, "RENAMED.md"), "identical bytes");
+
+  assert.notEqual(digestOf(dir), before, "the file's name is part of what was installed");
+});
+
+test("a nested path cannot collide with a flat one that concatenates to the same string", () => {
+  // The separator at manifest.mjs:102 is what keeps `references/api.md` distinct from a top-level
+  // file literally named `referencesapi.md`. Without it both hash the same string, and moving a
+  // file into `references/` would be invisible. The first version of this test compared
+  // `references/api.md` against a top-level `api.md` — which differ either way, so it passed
+  // against the mutation and proved nothing.
+  const flat = scratch();
+  mkdirSync(join(flat, "skill"), { recursive: true });
+  writeFileSync(join(flat, "skill", "referencesapi.md"), "the generated surface");
+
+  const nested = scratch();
+  mkdirSync(join(nested, "skill", "references"), { recursive: true });
+  writeFileSync(join(nested, "skill", "references", "api.md"), "the generated surface");
+
+  assert.notEqual(digestOf(join(flat, "skill")), digestOf(join(nested, "skill")));
+});
