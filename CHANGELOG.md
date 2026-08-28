@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Fixed
 
+- A skill whose example has an unclosed fence is no longer counted as compiling. The block was read
+  as zero blocks and the gate reported success — over an empty set, which is the worst output a gate
+  can produce: absolute green with nothing measured. It now names the fence and the file. (B-025)
+
+- An anti-example disowned INSIDE a live block is no longer taught. The exclusion looked only at the
+  line before the fence, so `// ❌ Do not:` above one import of three excluded nothing, and a symbol
+  the author explicitly marked as wrong was read as a taught API. The exclusion covers exactly the
+  line the marker introduces — showing the wrong way and then the right way in one example is the
+  common shape, and swallowing the rest of the block would have dropped the right way with it. (B-026)
+
+### Fixed
+
 - A `--global` install no longer writes a manifest into whatever directory you ran it from. It
   installed into your home directory and recorded itself in the current working directory, with
   entries like `../home/.agents/skills/theokit-agent-core` — paths that mean nothing from anywhere
