@@ -233,4 +233,11 @@ function main(argv = process.argv.slice(2)) {
 // process exits 0 having printed nothing. `ci.yml` runs this suite on `windows-latest`, and three
 // tests here spawn this file as a CLI — so the hand-built form would have failed there while
 // passing everywhere it was tried. Stdlib does it (parsimony rung 2). Found by /review, F-arch-4.
-if (import.meta.url === pathToFileURL(process.argv[1]).href) process.exit(main());
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  // `process.exitCode`, not `process.exit()`. A step's stdout is a pipe, writes to a pipe are
+  // asynchronous, and `process.exit()` terminates without flushing them. The report step exists
+  // solely to emit lines, and assert mode now insists its verdict reaches stdout — so the one thing
+  // both steps depend on is the thing `exit()` can truncate. Latent today (the output fits the 64KB
+  // buffer) and it bites the day the taught set grows. Same status code, Node drains first.
+  process.exitCode = main();
+}
