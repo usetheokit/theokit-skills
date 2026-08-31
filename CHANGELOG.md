@@ -128,6 +128,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Changed
 
+- **release:** the npm dist-tag is now derived from the version being published instead of
+  defaulting. A prerelease version (`X.Y.Z-next.N`) publishes under `next`; a stable version
+  publishes under `latest`. Previously the publish passed no `--tag` at all, so a prerelease
+  would have become the version every consumer installs, with the publish reporting success
+  either way.
+
+- **ci:** recorded why `sonar-project.properties` has no effect here. SonarCloud runs Automatic
+  Analysis on this project, which does not read that file and has been failing on every pull
+  request — the scan erroring, not a quality gate rejecting code. Adding a CI-based scan does not
+  replace it: the scanner refuses with `You are running CI analysis while Automatic Analysis is
+  enabled`, measured on #26. Automatic Analysis has to be turned off in the SonarCloud project
+  settings first; until then the file declares a scope nothing applies.
+
 ### Deprecated
 
 ### Removed
