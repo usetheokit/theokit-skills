@@ -12,3 +12,6 @@ BACKLOG.md
 # Stryker outputs — a mutation report is evidence for one run, not repository content
 reports/
 .stryker-tmp/
+
+# SDD workspace — scratch de execucao, nao conteudo do projeto
+.superpowers/

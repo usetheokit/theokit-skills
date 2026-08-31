@@ -83,12 +83,11 @@ records its fingerprint as a trailer:
 Plan-SHA256: 8f2c1a9b4e7d0356 (.claude/records/plans/my-slug-plan.md)
 ```
 
-Generate it with `node scripts/plan-fingerprint.mjs <slug>`, and check a commit against the plan on
-disk with:
-
-```sh
-node scripts/plan-fingerprint.mjs <slug> --verify "$(git log -1 --format=%b | sed -n 's/^Plan-SHA256: \([0-9a-f]*\).*/\1/p')"
-```
+**The tool that generated and verified this fingerprint no longer exists.**
+`scripts/plan-fingerprint.mjs` was removed with the rest of the machinery that policed the
+hand-written corpus, so the trailer above is currently written by hand and checked by nobody. Either
+restore a generator or drop the trailer — a convention that nothing enforces is a convention that
+records whatever the author remembered.
 
 Five answers, deliberately distinct, because they call for five different actions:
 
