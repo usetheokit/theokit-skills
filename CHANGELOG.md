@@ -4,15 +4,160 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Removed
+
+- The 32 hand-written skills, and the machinery that policed them: the drift workflow, the
+  taught-coverage and plan-fingerprint scripts, and the mutation-testing setup. They existed to
+  detect a skill teaching an API the package no longer exports. The replacement makes that class of
+  error impossible instead of detectable — a skill's code is copied byte-for-byte out of an example
+  that CI ran, so it cannot teach code that does not run. **A release from this tree would ship an
+  installer with nothing to install; the corpus returns before the next publish.**
+
+### Added
+
+- Five rules in the example contract, so that fifty examples cannot arrive in fifty shapes.
+  `anatomy` requires the four fixed files under `src/` and enforces what each may open — the
+  driver opens nothing, `minimal.ts` holds only `minimal`, `pitfalls.ts` holds only `pitfall-*`.
+  `lesson-role` requires every lesson id to declare its role in its prefix. `driver-drift` requires
+  every `.ts` in the repository's `_driver/` to have a byte-identical copy under `runtime/`, and
+  reports an absent canonical directory rather than skipping — a check that disarms itself when its
+  input is missing reads exactly like a check that passed. `proof` requires a `test` script, a
+  `tests/*.test.ts`, and that **every lesson id is named by some test**: a lesson nobody executes is
+  a claim, and the corpus publishes claims to agents that cannot check them. That last one is
+  honestly heuristic — it sees the mention, not the assertion. Both are what let the
+  generator stay dumb, and a dumb generator is the one that cannot surprise you.
+- `seeAlso` and `requires` in the `skill.json` schema, both optional arrays of `theokit-*` skill
+  names, neither allowed to name the skill itself. A generated skill that cannot point at its
+  neighbours leaves an agent to write the neighbouring code from memory.
+- A `framework` category, for examples that teach the theokit framework itself. The library
+  anatomy does not apply to it: a whole app has `app/`, `agents/` and `server/` rather than a
+  single-process `src/`, and its shape stays unspecified until the first one is written.
+
+- `theokit-check-example`, a second binary that verifies an example against the contract skills are
+  generated from. It reports all 15 rules in one run rather than stopping at the first, and exits
+  non-zero when a tree contains no example at all, because silence over an empty set is the worst
+  output a checker can give. The rules are documented in `theokit-examples/EXAMPLE-CONTRACT.md`.
+
+### Changed
+
+- **BREAKING: an example's category is now the LAYER it teaches**, from a closed vocabulary of
+  `sdk`, `framework`, `ui`, `tui`, `di`, `plugins`, `gateways` — one axis per path level, layer
+  above and domain below. `skill` and the package name carry the layer with them
+  (`theokit-sdk-memory`, `theokit-example-sdk-memory`), so the two halves of a pair cannot collide
+  and a skill name says which API it teaches.
+
+  The vocabulary it replaces mixed the axes: `capabilities` and `connections` were domains of the
+  SDK, `component-libraries` and `backend-di` were layers. The cost was concrete — the same
+  capability could not be proved on both sides, which is the comparison that found
+  [theokit#557](https://github.com/usetheokit/theokit/issues/557).
+- **BREAKING: `region` is now `lesson`, throughout.** The marker is `// #region lesson:<id>`, the
+  `skill.json` field is `lessons`, the rules are `lesson-syntax` / `lesson-location` /
+  `lesson-duplicate` / `lesson-missing` / `lesson-undeclared` / `lesson-role`, and `lib/regions.mjs`
+  is `lib/lessons.mjs` exporting `parseLessons` / `LessonError`. `region` answered *where the block
+  is*; the block is a unit of teaching, which is what `explains` describes and what the array order
+  already meant. The editor's `#region` syntax stays so the block still folds in VS Code — only the
+  namespace after it changed. Nothing consumes the field yet: the checker ships unreleased and the
+  generator is unwritten, so this is the last moment the rename is free.
+- `lesson-location` now reads the directories `tsconfig.json` declares in `include` instead of
+  hard-coding `src/`. Hard-coding it would make lesson markers unusable in exactly the examples
+  that teach the framework, which have no `src/` at all.
+
+- The installer's CI smoke test asserts that an empty corpus is refused rather than that a named
+  skill landed. It cannot assert the latter while the corpus is being regenerated, and a job that
+  is permanently red reports nothing.
+
+
+### Fixed
+
+- `teaches` now accepts `theokit`, `create-theokit` and `@usetheo/*`, not only `@theokit/*`. The
+  same missing-scope hole as `exact-pin`, in the field where a `framework` example declares the one
+  package it teaches most — `"teaches": ["theokit"]` was rejected as "not a @theokit export subpath".
+- `driver-drift` also runs for `framework` examples, which were skipping it along with `anatomy`.
+  An app needs no `cli-runtime.ts` and does need `fake-provider.ts`, so what each category must
+  carry is now declared rather than inferred from the category being skipped wholesale.
+- `exact-pin` now covers `theokit`, `create-theokit` and `@usetheo/*`, not only `@theokit/*`. The
+  framework package carries no scope, so the prefix test missed it — an example could have declared
+  `"theokit": "^0.59.0"` and passed the check, which is the floating range the rule exists to
+  refuse, on the dependency a framework example leans on hardest. Found while scoping the first
+  `framework/*` example, before one existed to be wrong.
+
+- A skill whose example has an unclosed fence is no longer counted as compiling. The block was read
+  as zero blocks and the gate reported success — over an empty set, which is the worst output a gate
+  can produce: absolute green with nothing measured. It now names the fence and the file. (B-025)
+
+- An anti-example disowned INSIDE a live block is no longer taught. The exclusion looked only at the
+  line before the fence, so `// ❌ Do not:` above one import of three excluded nothing, and a symbol
+  the author explicitly marked as wrong was read as a taught API. The exclusion covers exactly the
+  line the marker introduces — showing the wrong way and then the right way in one example is the
+  common shape, and swallowing the rest of the block would have dropped the right way with it. (B-026)
+
+### Fixed
+
+- `teaches` now accepts `theokit`, `create-theokit` and `@usetheo/*`, not only `@theokit/*`. The
+  same missing-scope hole as `exact-pin`, in the field where a `framework` example declares the one
+  package it teaches most — `"teaches": ["theokit"]` was rejected as "not a @theokit export subpath".
+- `driver-drift` also runs for `framework` examples, which were skipping it along with `anatomy`.
+  An app needs no `cli-runtime.ts` and does need `fake-provider.ts`, so what each category must
+  carry is now declared rather than inferred from the category being skipped wholesale.
+- `exact-pin` now covers `theokit`, `create-theokit` and `@usetheo/*`, not only `@theokit/*`. The
+  framework package carries no scope, so the prefix test missed it — an example could have declared
+  `"theokit": "^0.59.0"` and passed the check, which is the floating range the rule exists to
+  refuse, on the dependency a framework example leans on hardest. Found while scoping the first
+  `framework/*` example, before one existed to be wrong.
+
+- A `--global` install no longer writes a manifest into whatever directory you ran it from. It
+  installed into your home directory and recorded itself in the current working directory, with
+  entries like `../home/.agents/skills/theokit-agent-core` — paths that mean nothing from anywhere
+  else, in a file you could commit by accident. `--check` in that directory then measured the home
+  install while looking like it described the project it sat in. The manifest now lives in the scope
+  it describes, and a project `--check` that finds nothing says when a personal install exists
+  instead of reporting a bare absence. (B-022)
+
+- A linked skill whose dependency changed no longer reports that it "no longer matches this version".
+  In link mode the installed path is a symlink into `node_modules`, so a same-version content change
+  there — a workspace dependency, a `file:` install, a repack — produced a message that was false
+  twice: the version did match, and you had changed nothing. Linked and copied drift are now reported
+  separately, because the remedies differ: reinstalling fixes an edited copy, and only the dependency
+  moving explains a linked one. (B-023)
+
+- A project `--check` that finds a home-directory manifest it cannot read says so, instead of
+  promising a personal install and a command that would report on it. `--check --global` would have
+  returned the same unhelpful message — a dead end offered as a next step. (B-022)
+
 ### Added
 
 ### Changed
+
+- **release:** the npm dist-tag is now derived from the version being published instead of
+  defaulting. A prerelease version (`X.Y.Z-next.N`) publishes under `next`; a stable version
+  publishes under `latest`. Previously the publish passed no `--tag` at all, so a prerelease
+  would have become the version every consumer installs, with the publish reporting success
+  either way.
+
+- **ci:** recorded why `sonar-project.properties` has no effect here. SonarCloud runs Automatic
+  Analysis on this project, which does not read that file and has been failing on every pull
+  request — the scan erroring, not a quality gate rejecting code. Adding a CI-based scan does not
+  replace it: the scanner refuses with `You are running CI analysis while Automatic Analysis is
+  enabled`, measured on #26. Automatic Analysis has to be turned off in the SonarCloud project
+  settings first; until then the file declares a scope nothing applies.
 
 ### Deprecated
 
 ### Removed
 
 ### Fixed
+
+- `teaches` now accepts `theokit`, `create-theokit` and `@usetheo/*`, not only `@theokit/*`. The
+  same missing-scope hole as `exact-pin`, in the field where a `framework` example declares the one
+  package it teaches most — `"teaches": ["theokit"]` was rejected as "not a @theokit export subpath".
+- `driver-drift` also runs for `framework` examples, which were skipping it along with `anatomy`.
+  An app needs no `cli-runtime.ts` and does need `fake-provider.ts`, so what each category must
+  carry is now declared rather than inferred from the category being skipped wholesale.
+- `exact-pin` now covers `theokit`, `create-theokit` and `@usetheo/*`, not only `@theokit/*`. The
+  framework package carries no scope, so the prefix test missed it — an example could have declared
+  `"theokit": "^0.59.0"` and passed the check, which is the floating range the rule exists to
+  refuse, on the dependency a framework example leans on hardest. Found while scoping the first
+  `framework/*` example, before one existed to be wrong.
 
 ### Security
 
@@ -32,6 +177,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 
 ### Fixed
+
+- `teaches` now accepts `theokit`, `create-theokit` and `@usetheo/*`, not only `@theokit/*`. The
+  same missing-scope hole as `exact-pin`, in the field where a `framework` example declares the one
+  package it teaches most — `"teaches": ["theokit"]` was rejected as "not a @theokit export subpath".
+- `driver-drift` also runs for `framework` examples, which were skipping it along with `anatomy`.
+  An app needs no `cli-runtime.ts` and does need `fake-provider.ts`, so what each category must
+  carry is now declared rather than inferred from the category being skipped wholesale.
+- `exact-pin` now covers `theokit`, `create-theokit` and `@usetheo/*`, not only `@theokit/*`. The
+  framework package carries no scope, so the prefix test missed it — an example could have declared
+  `"theokit": "^0.59.0"` and passed the check, which is the floating range the rule exists to
+  refuse, on the dependency a framework example leans on hardest. Found while scoping the first
+  `framework/*` example, before one existed to be wrong.
 
 - The guard that forbids a second reader of the skills corpus now covers `scripts/` as well as
   `tests/`. The script that compares taught packages against installed ones lives there and reads the
@@ -91,6 +248,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 ## [0.9.1] - 2026-08-28
 
 ### Fixed
+
+- `teaches` now accepts `theokit`, `create-theokit` and `@usetheo/*`, not only `@theokit/*`. The
+  same missing-scope hole as `exact-pin`, in the field where a `framework` example declares the one
+  package it teaches most — `"teaches": ["theokit"]` was rejected as "not a @theokit export subpath".
+- `driver-drift` also runs for `framework` examples, which were skipping it along with `anatomy`.
+  An app needs no `cli-runtime.ts` and does need `fake-provider.ts`, so what each category must
+  carry is now declared rather than inferred from the category being skipped wholesale.
+- `exact-pin` now covers `theokit`, `create-theokit` and `@usetheo/*`, not only `@theokit/*`. The
+  framework package carries no scope, so the prefix test missed it — an example could have declared
+  `"theokit": "^0.59.0"` and passed the check, which is the floating range the rule exists to
+  refuse, on the dependency a framework example leans on hardest. Found while scoping the first
+  `framework/*` example, before one existed to be wrong.
 
 - Detection of the `.agents` target is now covered per source. Two of the four directories it
   checks — `~/.codex` and `~/.gemini` — were named by no test at all, and detection decides **where
@@ -185,6 +354,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 
 ### Fixed
+
+- `teaches` now accepts `theokit`, `create-theokit` and `@usetheo/*`, not only `@theokit/*`. The
+  same missing-scope hole as `exact-pin`, in the field where a `framework` example declares the one
+  package it teaches most — `"teaches": ["theokit"]` was rejected as "not a @theokit export subpath".
+- `driver-drift` also runs for `framework` examples, which were skipping it along with `anatomy`.
+  An app needs no `cli-runtime.ts` and does need `fake-provider.ts`, so what each category must
+  carry is now declared rather than inferred from the category being skipped wholesale.
+- `exact-pin` now covers `theokit`, `create-theokit` and `@usetheo/*`, not only `@theokit/*`. The
+  framework package carries no scope, so the prefix test missed it — an example could have declared
+  `"theokit": "^0.59.0"` and passed the check, which is the floating range the rule exists to
+  refuse, on the dependency a framework example leans on hardest. Found while scoping the first
+  `framework/*` example, before one existed to be wrong.
 
 - After a schema upgrade the failure message said "no manifest found — the skills were never
   installed here" while the file sat right there with 31 skills installed. It now describes both
@@ -314,6 +495,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Fixed
 
+- `teaches` now accepts `theokit`, `create-theokit` and `@usetheo/*`, not only `@theokit/*`. The
+  same missing-scope hole as `exact-pin`, in the field where a `framework` example declares the one
+  package it teaches most — `"teaches": ["theokit"]` was rejected as "not a @theokit export subpath".
+- `driver-drift` also runs for `framework` examples, which were skipping it along with `anatomy`.
+  An app needs no `cli-runtime.ts` and does need `fake-provider.ts`, so what each category must
+  carry is now declared rather than inferred from the category being skipped wholesale.
+- `exact-pin` now covers `theokit`, `create-theokit` and `@usetheo/*`, not only `@theokit/*`. The
+  framework package carries no scope, so the prefix test missed it — an example could have declared
+  `"theokit": "^0.59.0"` and passed the check, which is the floating range the rule exists to
+  refuse, on the dependency a framework example leans on hardest. Found while scoping the first
+  `framework/*` example, before one existed to be wrong.
+
 - `qs` was pinned to a version carrying a moderate DoS advisory, reachable through two dev-only
   paths (the new mutation tooling, and the Slack gateway adapter added earlier today). An
   `overrides` entry moves it to a patched release: `npm audit` reports zero at every severity.
@@ -370,6 +563,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Fixed
 
+- `teaches` now accepts `theokit`, `create-theokit` and `@usetheo/*`, not only `@theokit/*`. The
+  same missing-scope hole as `exact-pin`, in the field where a `framework` example declares the one
+  package it teaches most — `"teaches": ["theokit"]` was rejected as "not a @theokit export subpath".
+- `driver-drift` also runs for `framework` examples, which were skipping it along with `anatomy`.
+  An app needs no `cli-runtime.ts` and does need `fake-provider.ts`, so what each category must
+  carry is now declared rather than inferred from the category being skipped wholesale.
+- `exact-pin` now covers `theokit`, `create-theokit` and `@usetheo/*`, not only `@theokit/*`. The
+  framework package carries no scope, so the prefix test missed it — an example could have declared
+  `"theokit": "^0.59.0"` and passed the check, which is the floating range the rule exists to
+  refuse, on the dependency a framework example leans on hardest. Found while scoping the first
+  `framework/*` example, before one existed to be wrong.
+
 - `theokit-workflows` taught `import { Workflow, fn, agentStep } from "@theokit/sdk"`. The published SDK exports those from `@theokit/sdk/workflow`, not the root, so an agent following the skill wrote an import that does not compile. Found by the new resolution gate on its first run, which is the argument for the gate.
 
 ### Added
@@ -415,6 +620,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Fixed
 
+- `teaches` now accepts `theokit`, `create-theokit` and `@usetheo/*`, not only `@theokit/*`. The
+  same missing-scope hole as `exact-pin`, in the field where a `framework` example declares the one
+  package it teaches most — `"teaches": ["theokit"]` was rejected as "not a @theokit export subpath".
+- `driver-drift` also runs for `framework` examples, which were skipping it along with `anatomy`.
+  An app needs no `cli-runtime.ts` and does need `fake-provider.ts`, so what each category must
+  carry is now declared rather than inferred from the category being skipped wholesale.
+- `exact-pin` now covers `theokit`, `create-theokit` and `@usetheo/*`, not only `@theokit/*`. The
+  framework package carries no scope, so the prefix test missed it — an example could have declared
+  `"theokit": "^0.59.0"` and passed the check, which is the floating range the rule exists to
+  refuse, on the dependency a framework example leans on hardest. Found while scoping the first
+  `framework/*` example, before one existed to be wrong.
+
 - The test suite could never run. `tests/lint/no-ptbr.test.ts` imported `vitest`, which this zero-dependency package does not have, and used `__dirname`, which does not exist in ESM; the CI step that would have surfaced it (`node --test tests/`) fails on Node 22 before reaching any test — two breakages hiding each other. The lint is ported to `node:test` with its logic unchanged, and CI now runs `npm test`.
 
 
@@ -436,7 +653,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 ### Added
 - Per-module reference snippets under `skills/theokit-sdk/references/` (agent-core, tools, streaming, memory, cron, errors, workflows, eval, subscriptions, budget, config, plus optional di / di-agent / gateways). SKILL.md stays a concise overview and links each reference so it loads on demand. Generated from the `@theokit/sdk` scaffold via `node scripts/sync-references.mjs` — one source of truth, drift-gated by the SDK's CI (not a second hand-maintained copy).
 
-### Fixed (0.1.1)
+### Fixed
+
+- `teaches` now accepts `theokit`, `create-theokit` and `@usetheo/*`, not only `@theokit/*`. The
+  same missing-scope hole as `exact-pin`, in the field where a `framework` example declares the one
+  package it teaches most — `"teaches": ["theokit"]` was rejected as "not a @theokit export subpath".
+- `driver-drift` also runs for `framework` examples, which were skipping it along with `anatomy`.
+  An app needs no `cli-runtime.ts` and does need `fake-provider.ts`, so what each category must
+  carry is now declared rather than inferred from the category being skipped wholesale.
+- `exact-pin` now covers `theokit`, `create-theokit` and `@usetheo/*`, not only `@theokit/*`. The
+  framework package carries no scope, so the prefix test missed it — an example could have declared
+  `"theokit": "^0.59.0"` and passed the check, which is the floating range the rule exists to
+  refuse, on the dependency a framework example leans on hardest. Found while scoping the first
+  `framework/*` example, before one existed to be wrong. (0.1.1)
 - Tool example used the wrong spec field `execute` — the canonical `Tool.create` field is `handler` (returns a string, or a typed value with `outputSchema`).
 
 ## [0.1.0]

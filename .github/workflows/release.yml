@@ -75,19 +75,8 @@ jobs:
         with:
           # >= 22.14.0 is the floor npm states for OIDC publishing; `22` resolves to the latest 22.x.
           node-version-file: '.nvmrc'
-          registry-url: "https://registry.npmjs.org"
 
-      - name: npm >= 11.5.1, the floor for OIDC publishing # zizmor: ignore[adhoc-packages]
-        # The runner's bundled npm trails the Node release, and a version below the floor fails at
-        # publish time with an auth error that says nothing about the version. Upgrading is cheap and
-        # removes a diagnosis nobody would enjoy.
-        run: |
-          # Pinned exactly rather than `@latest`: this binary performs the publish, and
-          # a new npm arriving on its own would be an unreviewed change to the release
-          # path. 11.9.0 clears the OIDC floor (11.5.1) and is the version the rest of
-          # the organisation runs.
-          npm install -g npm@11.9.0 # zizmor: ignore[adhoc-packages] — bootstrapping npm itself; no lockfile can cover the package manager
-          npm --version
+      - uses: usetheokit/shared-workflows/actions/npm-oidc@v1 # zizmor: ignore[unpinned-uses]
 
       - name: The tag and the manifest must agree
         shell: bash
@@ -144,9 +133,14 @@ jobs:
           cd "$scratch"
           node -e 'require("fs").writeFileSync("package.json",JSON.stringify({name:"scratch",private:true,version:"1.0.0"}))'
           npm install --silent "./$tarball"
-          npx --no-install theokit-skills --target=agents
-          test -f .agents/skills/theokit-sdk/SKILL.md
-          npx --no-install theokit-skills --check  # `--target=` is inert on --check (W-10)
+          # skills/ is empty while the corpus is regenerated from theokit-examples, so the
+          # packed tarball has nothing to install. This asserts the refusal instead: a release
+          # that installed zero skills and said nothing is the failure this gate exists to stop.
+          # Restore the landed-skill assertion, and the --check line, with the corpus.
+          if npx --no-install theokit-skills --target=agents; then
+            echo "the packed installer exited 0 with an empty corpus" >&2
+            exit 1
+          fi
 
       - name: Publish with provenance
         if: github.event_name == 'push' || inputs.dry_run == false
@@ -161,7 +155,20 @@ jobs:
         # OIDC token from `id-token: write`, so the day someone re-adds NPM_TOKEN for any reason,
         # this publish silently stops using the trusted publisher and stops carrying provenance —
         # with no error to notice. The bootstrap is done; the crutch is now only a way to lose.
-        run: npm publish --provenance --access public
+        run: |
+          set -euo pipefail
+
+          # The dist-tag is DERIVED from the version, never defaulted. `npm publish` falls
+          # back to `latest`, so a prerelease published without `--tag` becomes the version
+          # every consumer installs — and the publish reports success either way, which is
+          # what makes the mistake invisible.
+          case "$VERSION" in
+            *-*) dist_tag="${VERSION#*-}"; dist_tag="${dist_tag%%.*}" ;;
+            *)   dist_tag="latest" ;;
+          esac
+          echo "publishing $VERSION under dist-tag $dist_tag"
+
+          npm publish --provenance --access public --tag "$dist_tag"
 
       - name: Publish skipped (dry run)
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run
