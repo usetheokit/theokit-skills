@@ -50,7 +50,7 @@ npx theokit-check-example ../theokit-examples
 
 It treats any directory holding a `skill.json` as an example and reports every way that example
 departs from the contract — 15 named rules covering required files, exact dependency pins, strict
-TypeScript, the manifest schema, and both directions of the region cross-check. It reports all of
+TypeScript, the manifest schema, and both directions of the lesson cross-check. It reports all of
 them in one run rather than stopping at the first, and it exits non-zero when a tree contains no
 example at all, because silence over an empty set is the worst output a checker can give.
 
@@ -59,7 +59,7 @@ The rules are documented, each under the name the failure message prints, in
 
 | Module | Responsibility |
 | --- | --- |
-| `lib/regions.mjs` | parse `#region skill:<id>` markers out of one source file |
+| `lib/lessons.mjs` | parse `#region skill:<id>` markers out of one source file |
 | `lib/skill-manifest.mjs` | validate one `skill.json`; knows the schema, not the filesystem |
 | `lib/example-contract.mjs` | compose those with filesystem facts into a list of violations |
 | `bin/check-example.mjs` | walk a tree, report per example, exit non-zero on any violation |

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseRegions, RegionError } from "../lib/regions.mjs";
+import { parseLessons, LessonError } from "../lib/lessons.mjs";
 
 /** node:assert's throws() returns undefined, so capture the error to assert on its fields. */
 function captureError(fn) {
@@ -13,92 +13,92 @@ function captureError(fn) {
   assert.fail("expected the call to throw");
 }
 
-test("parses one region and excludes its markers", () => {
+test("parses one lesson and excludes its markers", () => {
   const source = [
     "const before = 1;",
-    "// #region skill:create-agent",
+    "// #region lesson:create-agent",
     "const agent = 2;",
     "// #endregion",
     "const after = 3;",
   ].join("\n");
 
-  const regions = parseRegions(source, "src/a.ts");
+  const lessons = parseLessons(source, "src/a.ts");
 
-  assert.equal(regions.length, 1);
-  assert.equal(regions[0].id, "create-agent");
-  assert.equal(regions[0].file, "src/a.ts");
-  assert.equal(regions[0].startLine, 2);
-  assert.equal(regions[0].endLine, 4);
-  assert.equal(regions[0].code, "const agent = 2;");
+  assert.equal(lessons.length, 1);
+  assert.equal(lessons[0].id, "create-agent");
+  assert.equal(lessons[0].file, "src/a.ts");
+  assert.equal(lessons[0].startLine, 2);
+  assert.equal(lessons[0].endLine, 4);
+  assert.equal(lessons[0].code, "const agent = 2;");
 });
 
-test("keeps comments inside a region, because that is where the hard-won prose lives", () => {
+test("keeps comments inside a lesson, because that is where the hard-won prose lives", () => {
   const source = [
-    "// #region skill:ask",
+    "// #region lesson:ask",
     "// TWO CALLS, not one. send() hands back a handle.",
     "const run = await agent.send(message);",
     "// #endregion",
   ].join("\n");
 
-  const [region] = parseRegions(source, "src/a.ts");
+  const [lesson] = parseLessons(source, "src/a.ts");
 
-  assert.match(region.code, /TWO CALLS, not one/);
+  assert.match(lesson.code, /TWO CALLS, not one/);
 });
 
-test("a region that is never closed names the file and the opening line", () => {
-  const source = ["// #region skill:orphan", "const a = 1;"].join("\n");
+test("a lesson that is never closed names the file and the opening line", () => {
+  const source = ["// #region lesson:orphan", "const a = 1;"].join("\n");
 
-  const error = captureError(() => parseRegions(source, "src/a.ts"));
-  assert.ok(error instanceof RegionError);
+  const error = captureError(() => parseLessons(source, "src/a.ts"));
+  assert.ok(error instanceof LessonError);
   assert.equal(error.file, "src/a.ts");
   assert.equal(error.line, 1);
   assert.match(error.message, /orphan/);
 });
 
-test("a nested region is rejected, naming both ids", () => {
+test("a nested lesson is rejected, naming both ids", () => {
   const source = [
-    "// #region skill:outer",
-    "// #region skill:inner",
+    "// #region lesson:outer",
+    "// #region lesson:inner",
     "// #endregion",
     "// #endregion",
   ].join("\n");
 
-  const error = captureError(() => parseRegions(source, "src/a.ts"));
-  assert.ok(error instanceof RegionError);
+  const error = captureError(() => parseLessons(source, "src/a.ts"));
+  assert.ok(error instanceof LessonError);
   assert.match(error.message, /inner/);
   assert.match(error.message, /outer/);
 });
 
-test("an #endregion with no open region is rejected", () => {
-  const error = captureError(() => parseRegions("// #endregion", "src/a.ts"));
-  assert.ok(error instanceof RegionError);
+test("an #endregion with no open lesson is rejected", () => {
+  const error = captureError(() => parseLessons("// #endregion", "src/a.ts"));
+  assert.ok(error instanceof LessonError);
   assert.equal(error.line, 1);
 });
 
-test("a non-kebab-case id is not recognised as a region marker", () => {
-  assert.deepEqual(parseRegions("// #region skill:Create_Agent", "src/a.ts"), []);
+test("a non-kebab-case id is not recognised as a lesson marker", () => {
+  assert.deepEqual(parseLessons("// #region lesson:Create_Agent", "src/a.ts"), []);
 });
 
 test("a CRLF source yields code with no stray carriage returns", () => {
-  const source = ["// #region skill:crlf", "const a = 1;", "const b = 2;", "// #endregion"].join("\r\n");
+  const source = ["// #region lesson:crlf", "const a = 1;", "const b = 2;", "// #endregion"].join("\r\n");
 
-  const [region] = parseRegions(source, "src/a.ts");
+  const [lesson] = parseLessons(source, "src/a.ts");
 
-  assert.equal(region.code, "const a = 1;\nconst b = 2;");
-  assert.doesNotMatch(region.code, /\r/);
+  assert.equal(lesson.code, "const a = 1;\nconst b = 2;");
+  assert.doesNotMatch(lesson.code, /\r/);
 });
 
 test("a marker lookalike inside a string fails loudly rather than truncating silently", () => {
   const source = [
-    "// #region skill:with-template",
+    "// #region lesson:with-template",
     "const doc = `",
     "// #endregion",
     "`;",
     "// #endregion",
   ].join("\n");
 
-  const error = captureError(() => parseRegions(source, "src/a.ts"));
+  const error = captureError(() => parseLessons(source, "src/a.ts"));
 
-  assert.ok(error instanceof RegionError);
-  assert.match(error.message, /#endregion with no open region/);
+  assert.ok(error instanceof LessonError);
+  assert.match(error.message, /#endregion with no open lesson/);
 });

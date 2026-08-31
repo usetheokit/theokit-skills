@@ -23,7 +23,7 @@ test("exits 0 and names the example it checked", () => {
   const { code, out } = run(root);
 
   assert.equal(code, 0);
-  assert.match(out, /capabilities\/memory/);
+  assert.match(out, /sdk\/memory/);
 });
 
 test("exits 1 and names the rule when an example is malformed", () => {
@@ -45,13 +45,13 @@ test("exits 1 when the tree contains no example, rather than reporting success o
 test("an example nested inside another example is still discovered", () => {
   const outer = makeExample();
   const root = resolve(outer, "..", "..");
-  const inner = join(outer, "nested", "capabilities", "memory");
+  const inner = join(outer, "nested", "sdk", "memory");
   mkdirSync(inner, { recursive: true });
   writeFileSync(join(inner, "skill.json"), "{}");
 
   const { out } = run(root);
 
-  assert.match(out, /nested\/capabilities\/memory/);
+  assert.match(out, /nested\/sdk\/memory/);
 });
 
 test("a root path that does not exist is named, not dumped as a stack trace", () => {
@@ -72,7 +72,7 @@ test("an example whose check throws is named, and the run continues", () => {
   const { code, out } = run(root);
 
   assert.equal(code, 1);
-  assert.match(out, /ERROR capabilities\/memory/);
+  assert.match(out, /ERROR sdk\/memory/);
   assert.doesNotMatch(out, /at checkExample/);
 });
 
