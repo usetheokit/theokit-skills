@@ -128,6 +128,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Changed
 
+- **release:** the npm dist-tag is now derived from the version being published instead of
+  defaulting. A prerelease version (`X.Y.Z-next.N`) publishes under `next`; a stable version
+  publishes under `latest`. Previously the publish passed no `--tag` at all, so a prerelease
+  would have become the version every consumer installs, with the publish reporting success
+  either way.
+
 ### Deprecated
 
 ### Removed

@@ -155,7 +155,20 @@ jobs:
         # OIDC token from `id-token: write`, so the day someone re-adds NPM_TOKEN for any reason,
         # this publish silently stops using the trusted publisher and stops carrying provenance —
         # with no error to notice. The bootstrap is done; the crutch is now only a way to lose.
-        run: npm publish --provenance --access public
+        run: |
+          set -euo pipefail
+
+          # The dist-tag is DERIVED from the version, never defaulted. `npm publish` falls
+          # back to `latest`, so a prerelease published without `--tag` becomes the version
+          # every consumer installs — and the publish reports success either way, which is
+          # what makes the mistake invisible.
+          case "$VERSION" in
+            *-*) dist_tag="${VERSION#*-}"; dist_tag="${dist_tag%%.*}" ;;
+            *)   dist_tag="latest" ;;
+          esac
+          echo "publishing $VERSION under dist-tag $dist_tag"
+
+          npm publish --provenance --access public --tag "$dist_tag"
 
       - name: Publish skipped (dry run)
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run
