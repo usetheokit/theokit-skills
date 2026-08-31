@@ -134,6 +134,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   would have become the version every consumer installs, with the publish reporting success
   either way.
 
+- **ci:** SonarCloud now runs as a CI-based analysis instead of Automatic Analysis, which had been
+  failing on every pull request — the scan erroring, not a quality gate rejecting code. A check
+  that is red on every PR is a check nobody reads. `sonar-project.properties` had existed since
+  2026-08-28 and nothing read it: Automatic Analysis does not, and no workflow ran a scanner, so
+  the scope it declared was never applied.
+
 ### Deprecated
 
 ### Removed
