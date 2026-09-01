@@ -15,6 +15,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Added
 
+- **ci:** SonarQube Cloud now runs from CI instead of Automatic Analysis, and it reports coverage.
+  Automatic Analysis does not import coverage at all, so the quality gate here reported bugs and
+  smells while staying blind to what the suite reaches. The number comes from node's own runner
+  (`--experimental-test-coverage` with the lcov reporter), not from a framework added for the scan
+  — 98.35% lines over `bin/` and `lib/`, measured before the job was wired (#28).
+
 - Five rules in the example contract, so that fifty examples cannot arrive in fifty shapes.
   `anatomy` requires the four fixed files under `src/` and enforces what each may open — the
   driver opens nothing, `minimal.ts` holds only `minimal`, `pitfalls.ts` holds only `pitfall-*`.
