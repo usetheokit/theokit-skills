@@ -126,6 +126,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Added
 
+- **ci:** per-commit package previews via pkg.pr.new. This package IS an installer — what it does
+  is create links into somebody else's project — so "does it work" is a question only an install
+  can answer, and until now that answer had to wait for a release. Previews live on pkg.pr.new's
+  own registry, never npm, and burn no version.
+
 ### Changed
 
 - **release:** the npm dist-tag is now derived from the version being published instead of

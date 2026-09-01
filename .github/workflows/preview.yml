@@ -1,0 +1,40 @@
+name: Preview releases
+
+# Per-commit package previews on pkg.pr.new — never npm, so nothing here burns a version.
+#
+# A fix here is unverifiable from a consumer until it is on a registry, and this package IS an
+# installer: what it does is create links into somebody else's project, so "does it work" is a
+# question only an install can answer. A preview makes that answerable per commit instead of per
+# release.
+#
+# Three inputs, all because this repository is shaped unlike the other eight:
+#
+#   packages-command   the publishable package is the repository ROOT, not a directory under
+#                      packages/ — the shared default derives from packages/* and apps/* and would
+#                      correctly find nothing here.
+#   build-command      empty on purpose. This package publishes its sources; there is no build to
+#                      run, and skipping is the accurate description rather than a shortcut.
+#   (install)          detected from package-lock.json by the shared workflow — npm, not pnpm.
+#
+# The implementation is shared rather than copied nine times; see
+# usetheokit/shared-workflows/.github/workflows/preview.yml.
+
+on:
+  pull_request:
+  # Work is born on `workspace` and only meets a pull request at promotion time, so a fix would
+  # otherwise sit here with no preview during the window it is most worth iterating on.
+  push:
+    branches: [workspace]
+
+permissions: {}
+
+concurrency:
+  group: preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    uses: usetheokit/shared-workflows/.github/workflows/preview.yml@v1 # zizmor: ignore[unpinned-uses]
+    with:
+      packages-command: echo .
+      build-command: ''
