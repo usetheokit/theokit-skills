@@ -3,15 +3,19 @@ node_modules/
 *.log
 .npmrc
 
-# Kit de manutencao (Squad) instalado em .claude/ — nao versionado
+# Maintenance kit (Squad) installed under .claude/ — personal tooling, never versioned
 .claude/
 
-# Registro de manutencao pessoal (Squad) — nao e documentacao do projeto
+# Personal maintenance registry (Squad) — not project documentation
 BACKLOG.md
 
 # Stryker outputs — a mutation report is evidence for one run, not repository content
 reports/
 .stryker-tmp/
 
-# SDD workspace — scratch de execucao, nao conteudo do projeto
+# SDD workspace — execution scratch, not project content
 .superpowers/
+
+# Coverage output — `npm run test:coverage` writes coverage/lcov.info for the SonarCloud scan.
+# It is a measurement of one run, not repository content, and the CI job asserts a clean tree.
+coverage/

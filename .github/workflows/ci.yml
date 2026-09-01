@@ -70,3 +70,33 @@ jobs:
       - name: The repo must be clean afterwards
         shell: bash
         run: git diff --exit-code && git status --porcelain
+
+  # SonarQube Cloud, from CI rather than Automatic Analysis.
+  #
+  # Automatic Analysis does not import coverage — "code coverage information is not supported" in
+  # its own documentation — so on that mechanism this project reported bugs and smells while the
+  # quality gate stayed blind to how much of the code the suite reaches.
+  #
+  # Automatic Analysis must be OFF for this project or the scanner refuses to run:
+  # "You are running CI analysis while Automatic Analysis is enabled." Switched off 2026-09-01;
+  # it is a UI toggle, the settings API refuses it with `cannot be set on a Project`.
+  #
+  # The coverage number comes from node's own runner (`--experimental-test-coverage` with the lcov
+  # reporter), not from a second framework added for the scan. Measured before wiring: 98.35% lines
+  # over `bin/` and `lib/`, with `coverage/lcov.info` present at the path
+  # `sonar-project.properties` names.
+  #
+  # One platform, not the three the suite runs on. The matrix exists because linking behaves
+  # differently per OS; a static analysis of the same source three times would report the same
+  # findings three times and race for one server-side report.
+  sonar:
+    needs: test
+    # `@v1` is a moving ref by design — a policy fix in shared-workflows must reach every
+    # caller without eleven pull requests, which is the reason that repository exists.
+    uses: usetheokit/shared-workflows/.github/workflows/sonar.yml@v1 # zizmor: ignore[unpinned-uses]
+    # Named rather than inherited: `secrets: inherit` would hand the scanner every secret
+    # this repository holds.
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    with:
+      coverage-command: npm run test:coverage
