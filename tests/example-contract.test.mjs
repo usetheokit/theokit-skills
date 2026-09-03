@@ -488,3 +488,56 @@ test("the layer vocabulary is closed", () => {
 
   assert.ok(rules(moved).includes("category"));
 });
+
+/*
+ * usetheokit/theokit-skills#24 — a snapshot version can be committed as a permanent example pin.
+ *
+ * `theokit-examples/README.md` opens with the repository's promise: *"Every example installs
+ * theokit from npm, at a pinned version, exactly as a stranger would."* A stranger does not
+ * install a throwaway snapshot.
+ *
+ * Harmless until `usetheokit/theokit-sdk#484` gave the SDK a snapshot release path. The intended
+ * workflow is publish a snapshot, verify against it, then pin the real release — and nothing made
+ * the last step happen. npm versions are immutable after 72 hours, so a snapshot left behind keeps
+ * resolving forever and the example demonstrates a tree that was never released.
+ */
+test("a changesets snapshot pin is reported — it is a throwaway version, not a release", () => {
+  const dir = makeExample((files) => {
+    const pkg = JSON.parse(files["package.json"]);
+    pkg.dependencies = { theokit: "0.64.1-pr479-20260831130000" };
+    files["package.json"] = JSON.stringify(pkg);
+  });
+
+  assert.ok(rules(dir).includes("exact-pin"));
+});
+
+test("a released prerelease still passes — beta and rc are versions a stranger can install", () => {
+  // The counter-proof, and the line this fix deliberately does not cross. `EXAMPLE-CONTRACT.md`
+  // lists `4.61.0-beta.1` as valid, and refusing every prerelease would refuse a published beta an
+  // example may be pinned to on purpose during a migration. What is refused is the SHAPE a
+  // changesets snapshot has and nothing else does: a trailing 14-digit UTC timestamp.
+  for (const version of ["4.61.0-beta.1", "4.61.0-rc.2", "4.63.4-next.0", "4.61.0"]) {
+    const dir = makeExample((files) => {
+      const pkg = JSON.parse(files["package.json"]);
+      pkg.dependencies = { "@theokit/sdk": version };
+      files["package.json"] = JSON.stringify(pkg);
+    });
+
+    assert.ok(!rules(dir).includes("exact-pin"), `${version} should be an acceptable pin`);
+  }
+});
+
+test("the snapshot shape is recognised whatever tag the dispatch chose", () => {
+  // `changeset version --snapshot <tag>` takes the tag from the dispatch input, so the middle
+  // segment is whatever someone typed. Matching `pr479` would close the hole for one workflow and
+  // leave it open for the next.
+  for (const version of ["0.0.0-fix-20260901120000", "1.2.3-my.branch-20260902235959"]) {
+    const dir = makeExample((files) => {
+      const pkg = JSON.parse(files["package.json"]);
+      pkg.dependencies = { "@theokit/sdk": version };
+      files["package.json"] = JSON.stringify(pkg);
+    });
+
+    assert.ok(rules(dir).includes("exact-pin"), `${version} should be refused`);
+  }
+});

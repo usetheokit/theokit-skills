@@ -4,6 +4,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Fixed
+
+- **`exact-pin` refuses a changesets snapshot pin (#24).** The rule accepted any prerelease suffix,
+  which was harmless until `usetheokit/theokit-sdk#484` gave the SDK a snapshot release path. A
+  snapshot exists to verify a fix from the registry before a release cut, under a dist-tag that is
+  deliberately not `latest`; the intended sequence is publish, verify, then pin the release, and
+  nothing made the last step happen. npm versions are immutable after 72 hours, so a snapshot left
+  behind resolves forever while the example demonstrates a tree that was never released — against a
+  README whose first paragraph promises every example installs what a stranger would.
+
+  Only the snapshot SHAPE is refused: the trailing 14-digit UTC timestamp
+  `changeset version --snapshot <tag>` appends. Anchored there rather than on any tag, because the
+  tag comes from a dispatch input and matching one workflow's would leave the next one's open.
+  `4.61.0-beta.1` and `4.63.4-next.0` still pass — a published beta is something a stranger can
+  install, and whether the promise should exclude those too is a decision about the contract rather
+  than a hole in the checker.
+
 ### Removed
 
 - The 32 hand-written skills, and the machinery that policed them: the drift workflow, the
@@ -14,6 +31,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   installer with nothing to install; the corpus returns before the next publish.**
 
 ### Added
+
+- **ci:** SonarQube Cloud now runs from CI instead of Automatic Analysis, and it reports coverage.
+  Automatic Analysis does not import coverage at all, so the quality gate here reported bugs and
+  smells while staying blind to what the suite reaches. The number comes from node's own runner
+  (`--experimental-test-coverage` with the lcov reporter), not from a framework added for the scan
+  — 98.35% lines over `bin/` and `lib/`, measured before the job was wired (#28).
 
 - Five rules in the example contract, so that fifty examples cannot arrive in fifty shapes.
   `anatomy` requires the four fixed files under `src/` and enforces what each may open — the
