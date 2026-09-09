@@ -87,10 +87,15 @@ jobs:
 
       - name: The tag and the manifest must agree
         shell: bash
+        env:
+          # Through `env:` rather than interpolated. `github.event_name` comes from a fixed set
+          # GitHub controls, so nothing here was injectable; the uniform habit is what removes
+          # the finding without a standing exception.
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           manifest="$(node -p "require('./package.json').version")"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "manual run — publishing version $manifest"
           else
             tag="${GITHUB_REF_NAME#v}"
