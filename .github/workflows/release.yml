@@ -32,6 +32,13 @@ on:
         type: boolean
         default: true
 
+# Never cancelled. This publishes to a registry, and a run stopped halfway can leave a version
+# bumped and committed but unpublished, or published with no tag behind it. A second release
+# queues behind the first instead of replacing it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
